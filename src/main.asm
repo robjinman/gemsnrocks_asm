@@ -2,12 +2,13 @@
 hello:        db 'Hello, World!', 10
 fb_path:      db '/dev/fb0', 0
 
-drw_fbfd:     dq 0
-drw_x:        dq 0
-drw_y:        dq 0
+drw_fbfd:     dd 0
+drw_fb:       dq 0
+drw_fb_bytes  dq 0
+drw_fb_w      dd 1920
+drw_fb_h      dd 1080
 
               SECTION .bss
-drw_buf:      resb 7680
 
               SECTION .text
               global _start
@@ -24,99 +25,118 @@ drw_buf:      resb 7680
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_init:
+; Initialise the draw system
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rax, 2                    ; sysopen
+; Open /dev/fb0 and get a file descriptor
+              mov rax, 2                    ; sys_open
               lea rdi, [rel fb_path]
               mov rsi, 2                    ; O_RDWR
               mov rdx, 0                    ; flags
               syscall
-              mov [drw_fbfd], rax
+              mov [drw_fbfd], eax
 
-; Fill the buffer with the colour
-              xor rcx, rcx
-              mov rdi, 1920
-              mov rdx, 0xCDCDCDCD
-.loop:
-              mov [drw_buf + 4 * rcx], rdx
-              inc rcx
-              cmp rcx, rdi
-              jl .loop
+; Compute total frame buffer size
+              mov eax, [drw_fb_w]
+              mov edi, [drw_fb_h]
+              mul edi
+              shl rax, 2
+              mov [drw_fb_bytes], eax
+
+; mmap the 'file' into the address space
+              mov rax, 9                    ; sys_mmap
+              mov rdi, 0                    ; addr hint
+              mov rsi, [drw_fb_bytes]
+              mov rdx, qword 0b11           ; PROT_READ | PROT_WRITE
+              mov r10, qword 0b1            ; MAP_SHARED
+              mov r8d, [drw_fbfd]
+              mov r9, 0
+              syscall
+              mov [drw_fb], rax
 
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_term:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdi, [drw_fbfd]
+              mov rax, 11                   ; sys_munmap
+              mov rdi, [drw_fb]
+              mov rsi, [drw_fb_bytes]
+              syscall
+
+              mov edi, [drw_fbfd]
               mov rax, 3                    ; sys_close
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-drw_goto:
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov [drw_x], rdi
-              mov [drw_y], rsi
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-drw_blit:
-; Blit pixels from buffer to frame buffer
+drw_copy:
+; Copy pixels from src buffer to dest buffer
 ;
-; rdi - num pixels
+; rdi     src
+; rsi     srcX
+; rdx     srcY
+; rcx     dst
+; r8      dstX
+; r9      dstY
+; stack   w
+;         h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rcx, rdi
-              ; Seek to position
-              mov rdi, [drw_fbfd]
-              mov rax, [drw_y]              ; offset
-              mov rsi, 1920
-              mul rsi
-              mov r8, [drw_x]
-              add rax, r8
-              shl rax, 2
-              mov rsi, rax
-              xor rdx, rdx                  ; SEEK_SET
-              mov rax, 8                    ; sys_lseek
-              push rcx
-              syscall
-              pop rcx
-              ; Write pixel data
-              lea rsi, [rel drw_buf]
-              mov rdx, rcx
-              shl rdx, 2                    ; num bytes
-              mov rax, 1                    ; sys_write
-              syscall
+; TODO
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drw_draw:
+; Copy pixels from src buffer to frame buffer
+;
+; rdi     src
+; rsi     srcX
+; rdx     srcY
+; rcx     dstX
+; r8      dstY
+; r9      w
+; stack   h
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; TODO
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_fill:
 ; Fills the rectangular region with a colour
 ;
-; rdi - width
-; rsi - height
-; rdx - colour
+; rdi     dstX
+; rsi     dstY
+; rdx     w
+; rcx     h
+; r8      colour
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              xor rcx, rcx
-; Fill the buffer with the colour
-;.loop:
-;              mov [drw_buf + 4 * rcx], rdx
-;              inc rcx
-;              cmp rcx, rdi
-;              jl .loop
+              push r12
+              push r13
+              xor r10, r10                  ; r10 counts rows
+.loop_row:
+              xor r11, r11                  ; r11 counts columns
+.loop_col:
+              mov r12, rdi
+              add r12, r11
+              shl r12, 2                    ; offset in column
+              mov rax, rsi
+              add rax, r10
+              mov r13d, [drw_fb_w]
+              imul rax, r13
+              shl rax, 2
+              add rax, [drw_fb]             ; pointer to row
+              mov [rax + r12], r8
 
-              xor rcx, rcx
-; Iterate over rows, blitting pixels from buffer to frame buffer
-.next_row:
-              push rsi
-              push rcx
-              push rdi
-              call drw_blit
-              pop rdi
-              pop rcx
-              pop rsi
-              inc dword [drw_y]
-              inc rcx
-              cmp rcx, rsi
-              jl .next_row
+              inc r11
+              cmp r11, rdx
+              jl .loop_col
+
+              inc r10
+              cmp r10, rcx
+              jl .loop_row
+
+              pop r13
+              pop r12
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -130,13 +150,11 @@ _start:
 
               call drw_init
 
-              mov rdi, 200
-              mov rsi, 100
-              call drw_goto
-
-              mov rdi, 150
-              mov rsi, 80
-              mov rdx, 0x00FF0000
+              mov rdi, 300
+              mov rsi, 200
+              mov rdx, 80
+              mov rcx, 50
+              mov r8, 0x00FF0000
               call drw_fill
 
               call drw_term
