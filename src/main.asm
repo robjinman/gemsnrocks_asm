@@ -8,9 +8,12 @@ drw_fb_w:     dd 1920
 drw_fb_h:     dd 1080
 
 image_path:   db './data/image.bmp', 0
+image_w       dd 64
+image_h       dd 64
+image_size    dd 64 * 64 * 4
 
               SECTION .bss
-image:        resb 800 * 450 * 4
+image:        resb 64 * 64 * 4
 
               SECTION .text
               global _start
@@ -251,7 +254,7 @@ _start:
 
               lea rdi, [rel image_path]
               lea rsi, [rel image]
-              mov rdx, 800 * 450 * 4
+              mov rdx, [image_size]
               call drw_load_bmp
 
               sub rsp, 16
@@ -260,8 +263,9 @@ _start:
               mov rdx, 0
               mov rcx, 300
               mov r8, 200
-              mov r9, 800
-              mov [rsp], dword 450
+              mov r9d, [image_w]
+              mov r10d, [image_h]
+              mov [rsp], r10d
               call drw_draw
 
               call drw_term
