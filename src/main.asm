@@ -7,10 +7,15 @@ drw_fb_bytes: dq 0
 drw_fb_w:     dd 1920
 drw_fb_h:     dd 1080
 
+hello:        db 'Hello, World!', 10
+
 image_path:   db './data/image.bmp', 0
-image_w       dd 64
-image_h       dd 64
-image_size    dd 64 * 64 * 4
+image_w:      dd 64
+image_h:      dd 64
+image_size:   dd 64 * 64 * 4
+
+player_x:     dd 300
+player_y:     dd 200
 
               SECTION .bss
 image:        resb 64 * 64 * 4
@@ -245,6 +250,9 @@ _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call drw_init
 
+              ; Game loop
+.loop:
+
               mov rdi, 0
               mov rsi, 0
               mov edx, [drw_fb_w]
@@ -261,12 +269,36 @@ _start:
               lea rdi, [rel image]
               mov rsi, 0
               mov rdx, 0
-              mov rcx, 300
-              mov r8, 200
+              mov ecx, [player_x]
+              mov r8d, [player_y]
               mov r9d, [image_w]
               mov r10d, [image_h]
               mov [rsp], r10d
               call drw_draw
+              add rsp, 16
+
+              ; Sleep
+              sub rsp, 16
+              mov rdi, rsp
+              mov r8, 0                       ; seconds
+              mov [rsp], r8
+              mov r8, 1000000000/30           ; nanoseconds
+              mov [rsp + 8], r8
+              mov rsi, 0
+              mov rax, 35                     ; sys_nanosleep
+              syscall
+              add rsp, 16
+
+              ; Move fella
+              add [player_x], dword 1
+
+              jmp .loop
+
+              mov rax, 1                      ; sys_write
+              mov rdi, 1                      ; stdout
+              lea rsi, [rel hello]
+              mov rdx, 14
+              syscall
 
               call drw_term
 
