@@ -1,9 +1,6 @@
               SECTION .data
 drw_fb_path:  db '/dev/fb0', 0
 
-drw_drm_path: db '/dev/dri/card1', 0
-drw_drm_fd:   dd 0
-
 drw_fbfd:     dd 0
 drw_fb:       dq 0
 drw_fb_bytes: dq 0
@@ -57,27 +54,11 @@ drw_init:
               shl rax, 2
               mov [drw_fb_bytes], eax
 
-              ; mmap the 'file' into the address space
-              ;mov rax, 9                    ; sys_mmap
-              ;mov rdi, 0                    ; addr hint
-              ;mov rsi, [drw_fb_bytes]
-              ;mov rdx, qword 0b11           ; PROT_READ | PROT_WRITE
-              ;mov r10, qword 0b1            ; MAP_SHARED
-              ;mov r8d, [drw_fbfd]
-              ;mov r9, 0
-              ;syscall
-              ;mov [drw_fb], rax
-
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_term:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ;mov rax, 11                   ; sys_munmap
-              ;mov rdi, [drw_fb]
-              ;mov rsi, [drw_fb_bytes]
-              ;syscall
-
               mov edi, [drw_fbfd]
               mov rax, 3                    ; sys_close
 
@@ -120,68 +101,6 @@ drw_load_bmp:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-drw_copy:
-; Copy pixels from src buffer to dest buffer
-;
-; rdi     src
-; rsi     srcX
-; rdx     srcY
-; rcx     dstX
-; r8      dstY
-; r9      w
-; stack   h
-;         dst
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push rbp
-              mov rbp, rsp
-
-              push r12
-              push r13
-              push r14
-
-              xor r11, r11                  ; r11 counts rows
-.loop_row:
-              xor r12, r12                  ; r12 counts columns
-.loop_col:
-              ; src offset = 4 * (r9 * (r11 + rdx) + (r12 + rsi))
-              ; dst offset = 4 * (drw_fb_w * (r11 + r8) + (r12 + rcx))
-              mov rax, r11
-              add rax, rdx
-              imul rax, r9
-              add rax, r12
-              add rax, rsi
-              shl rax, 2
-              mov r15, rax                  ; src offset
-
-              mov rax, r11
-              add rax, r8
-              imul eax, [drw_fb_w]
-              add rax, r12
-              add rax, rcx
-              shl rax, 2                    ; dst offset
-
-              add r15, rdi                  ; src pixel address
-              add rax, [rbp + 24]           ; dst pixel address
-
-              mov r10d, [r15]
-              mov [rax], r10d
-
-              inc r12
-              cmp r12, r9
-              jl .loop_col
-
-              inc r11
-              cmp r11, [rbp + 16]
-              jl .loop_row
-
-              pop r14
-              pop r13
-              pop r12
-
-              pop rbp
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_draw:
 ; Copy pixels from src buffer to frame buffer
 ;
@@ -193,22 +112,6 @@ drw_draw:
 ; rcx     dstX
 ; r8      dstY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ;push rbp
-              ;mov rbp, rsp
-
-              ;mov r10, [rbp + 16]           ; srcH
-
-              ;sub rsp, 16
-              ;mov r11, [drw_fb]
-              ;mov [rsp + 8], r11
-              ;mov [rsp], r10
-
-              ;call drw_copy
-
-              ;add rsp, 16
-              ;pop rbp
-              ;ret
-
               push r12
               push r13
               push r14
@@ -255,7 +158,6 @@ drw_draw:
               pop r12
 
               ret
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_fill:
@@ -325,15 +227,6 @@ initialise:
               mov rdx, termios_new
               syscall
 
-              ; TODO: Move this
-              ; Open /dev/drm/card1 and get a file descriptor
-              mov rax, 2                    ; sys_open
-              lea rdi, [rel drw_drm_path]
-              mov rsi, 2                    ; O_RDWR
-              mov rdx, 0                    ; flags
-              syscall
-              mov [drw_drm_fd], eax
-
               call drw_init
 
               ret
@@ -364,19 +257,6 @@ _start:
 
               ; Game loop
 .loop:
-
-              ;mov rdi, 0
-              ;mov rsi, 0
-              ;mov edx, [drw_fb_w]
-              ;mov ecx, [drw_fb_h]
-              ;mov r8, 0xFF332209
-              ;call drw_fill
-
-; rdi     src
-; rsi     srcW
-; rdx     srcH
-; rcx     dstX
-; r8      dstY
               lea rdi, [rel image]
               mov esi, [image_w]
               mov edx, [image_h]
@@ -384,64 +264,12 @@ _start:
               mov r8d, [player_y]
               call drw_draw
 
-              ;sub rsp, 16
-              ;lea rdi, [rel image]
-              ;mov rsi, 0
-              ;mov rdx, 0
-              ;mov ecx, [player_x]
-              ;mov r8d, [player_y]
-              ;mov r9d, [image_w]
-              ;mov r10d, [image_h]
-              ;mov [rsp], r10d
-              ;call drw_draw
-              ;add rsp, 16
-
-              ; Flush
-              ;mov rax, 26                     ; sys_msync
-              ;mov rdi, [drw_fb]
-              ;mov rsi, [drw_fb_bytes]
-              ;mov rdx, 6
-              ;syscall
-
-              ;struct drm_mode_fb_dirty_cmd {
-              ;  __u32 fb_id;
-              ;  __u32 flags;
-              ;  __u32 color;
-              ;  __u32 num_clips;
-              ;  __u64 clips_ptr;
-              ;};
-              ;struct drm_mode_rect {
-              ;  __s32 x1;
-              ;  __s32 y1;
-              ;  __s32 x2;
-              ;  __s32 y2;
-              ;};
-              ;sub rsp, 48
-              ;mov [rsp], dword 0              ; fb_id
-              ;mov [rsp + 4], dword 0          ; flags
-              ;mov [rsp + 8], dword 0          ; color
-              ;mov [rsp + 12], dword 1         ; num_clips
-              ;mov rdi, rsp
-              ;add rdi, 32
-              ;mov [rsp + 16], rdi             ; clips_ptr
-              ; rect
-              ;mov [rdi], dword 0              ; x1
-              ;mov [rdi + 4], dword 0          ; y1
-              ;mov [rdi + 8], dword 1920       ; x2
-              ;mov [rdi + 12], dword 1080      ; y2
-              ;mov rax, 16                     ; sys_ioctl
-              ;mov rdi, [drw_drm_fd]
-              ;mov rsi, 0xc01864b1             ; DRM_IOCTL_MODE_DIRTYFB
-              ;mov rdx, rsp
-              ;syscall
-              ;add rsp, 48
-
               ; Sleep
               sub rsp, 16
               mov rdi, rsp
               mov r8, 0                       ; seconds
               mov [rsp], r8
-              mov r8, 10000000                ; nanoseconds
+              mov r8, 1000000000/30           ; nanoseconds
               mov [rsp + 8], r8
               mov rsi, 0
               mov rax, 35                     ; sys_nanosleep
@@ -449,7 +277,7 @@ _start:
               add rsp, 16
 
               ; Move fella
-              add [player_x], dword 1
+              add [player_x], dword 8
 
               jmp .loop
 
