@@ -1,6 +1,9 @@
               SECTION .data
 drw_fb_path:  db '/dev/fb0', 0
 
+drw_drm_path: db '/dev/dri/card1', 0
+drw_drm_fd:   dd 0
+
 drw_fbfd:     dd 0
 drw_fb:       dq 0
 drw_fb_bytes: dq 0
@@ -18,6 +21,8 @@ player_x:     dd 300
 player_y:     dd 200
 
               SECTION .bss
+termios_old:  resb 60                       ; Original terminal settings
+termios_new:  resb 60                       ; Modified terminal settings
 image:        resb 64 * 64 * 4
 
               SECTION .text
@@ -53,25 +58,25 @@ drw_init:
               mov [drw_fb_bytes], eax
 
               ; mmap the 'file' into the address space
-              mov rax, 9                    ; sys_mmap
-              mov rdi, 0                    ; addr hint
-              mov rsi, [drw_fb_bytes]
-              mov rdx, qword 0b11           ; PROT_READ | PROT_WRITE
-              mov r10, qword 0b1            ; MAP_SHARED
-              mov r8d, [drw_fbfd]
-              mov r9, 0
-              syscall
-              mov [drw_fb], rax
+              ;mov rax, 9                    ; sys_mmap
+              ;mov rdi, 0                    ; addr hint
+              ;mov rsi, [drw_fb_bytes]
+              ;mov rdx, qword 0b11           ; PROT_READ | PROT_WRITE
+              ;mov r10, qword 0b1            ; MAP_SHARED
+              ;mov r8d, [drw_fbfd]
+              ;mov r9, 0
+              ;syscall
+              ;mov [drw_fb], rax
 
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_term:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rax, 11                   ; sys_munmap
-              mov rdi, [drw_fb]
-              mov rsi, [drw_fb_bytes]
-              syscall
+              ;mov rax, 11                   ; sys_munmap
+              ;mov rdi, [drw_fb]
+              ;mov rsi, [drw_fb_bytes]
+              ;syscall
 
               mov edi, [drw_fbfd]
               mov rax, 3                    ; sys_close
@@ -180,29 +185,77 @@ drw_copy:
 drw_draw:
 ; Copy pixels from src buffer to frame buffer
 ;
+; TODO: Add srcX, srcY, w, and h params to enable copying a subregion of src
+;
 ; rdi     src
-; rsi     srcX
-; rdx     srcY
+; rsi     srcW
+; rdx     srcH
 ; rcx     dstX
 ; r8      dstY
-; r9      w
-; stack   h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push rbp
-              mov rbp, rsp
+              ;push rbp
+              ;mov rbp, rsp
 
-              mov r10, [rbp + 16]           ; h
+              ;mov r10, [rbp + 16]           ; srcH
 
-              sub rsp, 16
-              mov r11, [drw_fb]
-              mov [rsp + 8], r11
-              mov [rsp], r10
+              ;sub rsp, 16
+              ;mov r11, [drw_fb]
+              ;mov [rsp + 8], r11
+              ;mov [rsp], r10
 
-              call drw_copy
+              ;call drw_copy
 
-              add rsp, 16
-              pop rbp
+              ;add rsp, 16
+              ;pop rbp
+              ;ret
+
+              push r12
+              push r13
+              push r14
+              push r15
+
+              mov r9, rdi                   ; src
+              mov r11, rsi                  ; srcW
+              mov r12, rdx                  ; srcH
+
+              xor r13, r13                  ; row
+.loop_row:
+              ; src offset = 4 * (srcW * row)
+              ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx)
+              mov r14, r13
+              imul r14, r11                 ; srcW * row
+              shl r14, 2                    ; src offset
+
+              mov r15, r13
+              add r15, r8                   ; row + dstY
+              imul r15d, [drw_fb_w]         ; drw_fb_w * (row + dstY)
+              add r15, rcx
+              shl r15, 2                    ; dst offset
+
+              mov rax, 18                   ; sys_pwrite64
+              mov rdi, [drw_fbfd]
+              mov rsi, r9
+              add rsi, r14
+              mov rdx, r11
+              shl rdx, 2
+              mov r10, r15
+              push r11
+              push rcx
+              syscall
+              pop rcx
+              pop r11
+
+              inc r13
+              cmp r13, r12
+              jl .loop_row
+
+              pop r15
+              pop r14
+              pop r13
+              pop r12
+
               ret
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_fill:
@@ -246,43 +299,149 @@ drw_fill:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-_start:
+initialise:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; Get current terminal settings
+              mov rax, 16                   ; sys_ioctl
+              mov rdi, 0                    ; stdin
+              mov rsi, 0x5401               ; TCGETS
+              mov rdx, termios_old
+              syscall
+
+              ; Make a copy
+              mov rax, 16                   ; sys_ioctl
+              mov rdi, 0                    ; stdin
+              mov rsi, 0x5401               ; TCGETS
+              mov rdx, termios_new
+              syscall
+
+              ; Disable ICANON and ECHO
+              and byte [termios_new + 12], 0xF5
+
+              ; Set modified terminal settings
+              mov rax, 16                   ; sys_ioctl
+              mov rdi, 0                    ; stdin
+              mov rsi, 0x5402               ; TCSETS
+              mov rdx, termios_new
+              syscall
+
+              ; TODO: Move this
+              ; Open /dev/drm/card1 and get a file descriptor
+              mov rax, 2                    ; sys_open
+              lea rdi, [rel drw_drm_path]
+              mov rsi, 2                    ; O_RDWR
+              mov rdx, 0                    ; flags
+              syscall
+              mov [drw_drm_fd], eax
+
               call drw_init
 
-              ; Game loop
-.loop:
+              ret
 
-              mov rdi, 0
-              mov rsi, 0
-              mov edx, [drw_fb_w]
-              mov ecx, [drw_fb_h]
-              mov r8, 0xFF332209
-              call drw_fill
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+terminate:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              call drw_term
+
+              ; Restore old terminal settings
+              mov rax, 16                   ; sys_ioctl
+              mov rdi, 0                    ; stdin
+              mov rsi, 0x5402               ; TCSETS
+              mov rdx, termios_old
+              syscall
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+_start:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              call initialise
 
               lea rdi, [rel image_path]
               lea rsi, [rel image]
               mov rdx, [image_size]
               call drw_load_bmp
 
-              sub rsp, 16
+              ; Game loop
+.loop:
+
+              ;mov rdi, 0
+              ;mov rsi, 0
+              ;mov edx, [drw_fb_w]
+              ;mov ecx, [drw_fb_h]
+              ;mov r8, 0xFF332209
+              ;call drw_fill
+
+; rdi     src
+; rsi     srcW
+; rdx     srcH
+; rcx     dstX
+; r8      dstY
               lea rdi, [rel image]
-              mov rsi, 0
-              mov rdx, 0
+              mov esi, [image_w]
+              mov edx, [image_h]
               mov ecx, [player_x]
               mov r8d, [player_y]
-              mov r9d, [image_w]
-              mov r10d, [image_h]
-              mov [rsp], r10d
               call drw_draw
-              add rsp, 16
+
+              ;sub rsp, 16
+              ;lea rdi, [rel image]
+              ;mov rsi, 0
+              ;mov rdx, 0
+              ;mov ecx, [player_x]
+              ;mov r8d, [player_y]
+              ;mov r9d, [image_w]
+              ;mov r10d, [image_h]
+              ;mov [rsp], r10d
+              ;call drw_draw
+              ;add rsp, 16
+
+              ; Flush
+              ;mov rax, 26                     ; sys_msync
+              ;mov rdi, [drw_fb]
+              ;mov rsi, [drw_fb_bytes]
+              ;mov rdx, 6
+              ;syscall
+
+              ;struct drm_mode_fb_dirty_cmd {
+              ;  __u32 fb_id;
+              ;  __u32 flags;
+              ;  __u32 color;
+              ;  __u32 num_clips;
+              ;  __u64 clips_ptr;
+              ;};
+              ;struct drm_mode_rect {
+              ;  __s32 x1;
+              ;  __s32 y1;
+              ;  __s32 x2;
+              ;  __s32 y2;
+              ;};
+              ;sub rsp, 48
+              ;mov [rsp], dword 0              ; fb_id
+              ;mov [rsp + 4], dword 0          ; flags
+              ;mov [rsp + 8], dword 0          ; color
+              ;mov [rsp + 12], dword 1         ; num_clips
+              ;mov rdi, rsp
+              ;add rdi, 32
+              ;mov [rsp + 16], rdi             ; clips_ptr
+              ; rect
+              ;mov [rdi], dword 0              ; x1
+              ;mov [rdi + 4], dword 0          ; y1
+              ;mov [rdi + 8], dword 1920       ; x2
+              ;mov [rdi + 12], dword 1080      ; y2
+              ;mov rax, 16                     ; sys_ioctl
+              ;mov rdi, [drw_drm_fd]
+              ;mov rsi, 0xc01864b1             ; DRM_IOCTL_MODE_DIRTYFB
+              ;mov rdx, rsp
+              ;syscall
+              ;add rsp, 48
 
               ; Sleep
               sub rsp, 16
               mov rdi, rsp
               mov r8, 0                       ; seconds
               mov [rsp], r8
-              mov r8, 1000000000/30           ; nanoseconds
+              mov r8, 10000000                ; nanoseconds
               mov [rsp + 8], r8
               mov rsi, 0
               mov rax, 35                     ; sys_nanosleep
@@ -300,7 +459,7 @@ _start:
               mov rdx, 14
               syscall
 
-              call drw_term
+              call terminate
 
               mov rax, 60                     ; sys_exit
               xor rdi, rdi
