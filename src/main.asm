@@ -2,7 +2,6 @@
 drw_fb_path:  db '/dev/fb0', 0
 
 drw_fbfd:     dd 0
-drw_fb:       dq 0
 drw_fb_bytes: dq 0
 drw_fb_w:     dd 1920
 drw_fb_h:     dd 1080
@@ -18,6 +17,8 @@ player_x:     dd 300
 player_y:     dd 200
 
               SECTION .bss
+drw_buf:      resb 1920 * 4                 ; General purpose buffer
+
 termios_old:  resb 60                       ; Original terminal settings
 termios_new:  resb 60                       ; Modified terminal settings
 image:        resb 64 * 64 * 4
@@ -160,6 +161,27 @@ drw_draw:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drw_fill_buf:
+; Fills the buffer with a 64-bit value
+;
+; rdi     value
+; rsi     count
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdx, [rel drw_buf]
+              xor rcx, rcx
+.loop:
+              mov r8, rcx
+              shl r8, 2
+              add r8, rdx
+              mov [r8], rdi
+
+              inc rcx
+              cmp rcx, rsi
+              jl .loop
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_fill:
 ; Fills the rectangular region with a colour
 ;
@@ -171,30 +193,42 @@ drw_fill:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push r12
               push r13
-              xor r10, r10                  ; r10 counts rows
+              push r14
+              push r15
+
+              mov r9, rdi                   ; dstX
+              mov r14, rsi                  ; dstY
+              mov r11, rdx                  ; w
+              mov r12, rcx                  ; h
+
+              mov rdi, r8
+              mov rsi, r11
+              call drw_fill_buf
+
+              xor r13, r13                  ; row
 .loop_row:
-              xor r11, r11                  ; r11 counts columns
-.loop_col:
-              mov r12, rdi
-              add r12, r11
-              shl r12, 2                    ; offset in column
-              mov rax, rsi
-              add rax, r10
-              mov r13d, [drw_fb_w]
-              imul rax, r13
-              shl rax, 2
-              add rax, [drw_fb]             ; pointer to row
-              add rax, r12
-              mov [rax], r8d
+              mov r15, r14
+              add r15, r13
+              imul r15d, [drw_fb_w]
+              add r15, r9
+              shl r15, 2                    ; offset into frame buffer
 
-              inc r11
-              cmp r11, rdx
-              jl .loop_col
+              mov rax, 18                   ; sys_pwrite64
+              mov rdi, [drw_fbfd]
+              lea rsi, [drw_buf]
+              mov rdx, r11
+              shl rdx, 2
+              mov r10, r15
+              push r11
+              syscall
+              pop r11
 
-              inc r10
-              cmp r10, rcx
+              inc r13
+              cmp r13, r12
               jl .loop_row
 
+              pop r15
+              pop r14
               pop r13
               pop r12
 
@@ -257,6 +291,13 @@ _start:
 
               ; Game loop
 .loop:
+              mov rdi, 50
+              mov rsi, 70
+              mov rdx, 1000
+              mov rcx, 700
+              mov r8, 0x0000FF00
+              call drw_fill
+
               lea rdi, [rel image]
               mov esi, [image_w]
               mov edx, [image_h]
