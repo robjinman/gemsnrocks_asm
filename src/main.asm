@@ -104,21 +104,29 @@ drw_blit:
 ; rsi     dst
 ; rdx     count (in pixels)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push r11
+
               xor rcx, rcx
 .loop:
               mov r8, rcx
-              shl r8, 2                     ; offset
+              shl r8, 2                     ; offset in bytes
 
               mov r9, r8
               add r9, rdi                   ; src address
               add r8, rsi                   ; dst address
 
               mov r10d, [r9]
-              mov [r8], r10d  ; TODO: If alpha component is non-zero
-
+              mov rax, r10
+              mov r11, 0xFF000000
+              and rax, r11
+              jz .skip
+              mov [r8], r10d
+.skip:
               inc rcx
               cmp rcx, rdx
               jl .loop
+
+              pop r11
 
               ret
 
@@ -157,13 +165,38 @@ drw_draw:
               add r15, rcx                  ; drw_fb_w * (row + dstY) + dstX
               shl r15, 2                    ; dst offset
 
-              mov rax, 18                   ; sys_pwrite64
+              ; Read bytes from frame buffer into buffer
+              mov rax, 17                   ; sys_pread64
               mov rdi, [drw_fbfd]
-              mov rsi, r9                   ; src
-              add rsi, r14
+              lea rsi, [rel drw_buf]
               mov rdx, r11                  ; num bytes
               shl rdx, 2
-              mov r10, r15                  ; destination offset
+              mov r10, r15                  ; frame buffer offset
+              push r11
+              push rcx
+              syscall
+              pop rcx
+              pop r11
+
+              ; Blit pixels from src image to buffer
+              mov rdi, r9
+              add rdi, r14
+              mov rdx, r11                  ; num pixels
+              push rcx
+              push r8
+              push r9
+              push r10
+              call drw_blit
+              pop r10
+              pop r9
+              pop r8
+              pop rcx
+
+              ; Write buffer to screen
+              mov rax, 18                   ; sys_pwrite64
+              mov rdi, [drw_fbfd]
+              mov rdx, r11                  ; num bytes
+              shl rdx, 2
               push r11
               push rcx
               syscall
@@ -316,7 +349,7 @@ _start:
               mov rsi, 0
               mov edx, [drw_fb_w]
               mov ecx, [drw_fb_h]
-              mov r8, 0x0044220F
+              mov r8, 0xFF44220F
               call drw_fill
 
               lea rdi, [rel image]
