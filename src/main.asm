@@ -82,21 +82,17 @@ drw_load_bmp:
               syscall
               mov rdi, rax
 
-              push rdi
-
-              ; Skip header
-              mov rax, 8                    ; sys_lseek
-              mov rsi, 54
-              mov rdx, 0                    ; SEEK_SET
-              syscall
-
-              pop rdi
               pop rdx
               pop rsi
 
               ; Load data from file
-              mov rax, 0                    ; sys_read
+              mov rax, 17                   ; sys_pread64
+              mov r10, 54
+              push r11
+              push rcx
               syscall
+              pop rcx
+              pop r11
 
               ret
 
