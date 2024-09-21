@@ -1,6 +1,5 @@
               SECTION .data
 drw_fb_path:  db '/dev/fb0', 0
-drw_fb:       dq 0
 drw_fbfd:     dd 0
 drw_fb_bytes: dq 0
 drw_fb_w:     dd 1920
@@ -55,27 +54,11 @@ drw_init:
               shl rax, 2
               mov [drw_fb_bytes], rax
 
-              ; mmap the 'file' into the address space
-              mov rax, 9                    ; sys_mmap
-              mov rdi, 0                    ; addr hint
-              mov rsi, [drw_fb_bytes]
-              mov rdx, qword 0b11           ; PROT_READ | PROT_WRITE
-              mov r10, qword 0b1            ; MAP_SHARED
-              mov r8d, [drw_fbfd]
-              mov r9, 0
-              syscall
-              mov [drw_fb], rax
-
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_term:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rax, 11                   ; sys_munmap
-              mov rdi, [drw_fb]
-              mov rsi, [drw_fb_bytes]
-              syscall
-
               mov edi, [drw_fbfd]
               mov rax, 3                    ; sys_close
 
@@ -178,20 +161,18 @@ drw_draw:
               add r15, rcx                  ; drw_fb_w * (row + dstY) + dstX
               shl r15, 2                    ; dst offset
 
-              mov rdi, r9
-              add rdi, r14
-              mov rsi, [drw_fb]
-              add rsi, r15
-              mov rdx, r11
+              mov rax, 18                   ; sys_pwrite64
+              mov rdi, [drw_fbfd]
+              mov rsi, r9                   ; src
+              add rsi, r14
+              mov rdx, r11                  ; num bytes
+              shl rdx, 2
+              mov r10, r15                  ; destination offset
+              push r11
               push rcx
-              push r8
-              push r9
-              push r10
-              call drw_blit
-              pop r10
-              pop r9
-              pop r8
+              syscall
               pop rcx
+              pop r11
 
               inc r13
               cmp r13, r12
@@ -260,9 +241,9 @@ drw_fill:
               mov rax, 18                   ; sys_pwrite64
               mov rdi, [drw_fbfd]
               lea rsi, [drw_buf]
-              mov rdx, r11
+              mov rdx, r11                  ; num bytes
               shl rdx, 2
-              mov r10, r15
+              mov r10, r15                  ; destination offset
               push r11
               syscall
               pop r11
