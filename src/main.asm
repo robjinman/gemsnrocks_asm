@@ -371,8 +371,48 @@ _start:
               syscall
               add rsp, 16
 
+              mov r8, 0
+              mov r9, 0
+
+              sub rsp, 16
+              mov rax, 0                      ; sys_read
+              mov rdi, 0                      ; stdin
+              mov rsi, rsp
+              mov rdx, 3                      ; num bytes
+              syscall
+              cmp byte [rsp], 0x1B            ; esc sequence
+              jne .no_input
+              cmp byte [rsp + 1], 0x5B        ; [ character
+              jne .no_input
+              cmp byte [rsp + 2], 0x41
+              je .key_up
+              cmp byte [rsp + 2], 0x42
+              je .key_down
+              cmp byte [rsp + 2], 0x43
+              je .key_right
+              cmp byte [rsp + 2], 0x44
+              je .key_left
+.key_up:
+              mov r8, 0
+              mov r9, -8
+              jmp .no_input
+.key_down:
+              mov r8, 0
+              mov r9, 8
+              jmp .no_input
+.key_right:
+              mov r8, 8
+              mov r9, 0
+              jmp .no_input
+.key_left:
+              mov r8, -8
+              mov r9, 0
+.no_input:
+              add rsp, 16
+
               ; Move fella
-              add [player_x], dword 8
+              add [player_x], r8d
+              add [player_y], r9d
 
               jmp .loop
 
