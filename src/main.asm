@@ -12,8 +12,10 @@ image_w:      dd 64
 image_h:      dd 64
 image_size:   dd 64 * 64 * 4
 
-player_x:     dd 300
+player_x:     dd 900
 player_y:     dd 200
+player_dx     dd 0
+player_dy     dd 0
 
               SECTION .bss
 drw_buf:      resb 1920 * 4                 ; General purpose buffer
@@ -334,6 +336,47 @@ terminate:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+keyboard:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              sub rsp, 16
+              mov rax, 0                      ; sys_read
+              mov rdi, 0                      ; stdin
+              mov rsi, rsp
+              mov rdx, 3                      ; num bytes
+              syscall
+              cmp byte [rsp], 0x1B            ; esc sequence
+              jne .no_input
+              cmp byte [rsp + 1], 0x5B        ; [ character
+              jne .no_input
+              cmp byte [rsp + 2], 0x41
+              je .key_up
+              cmp byte [rsp + 2], 0x42
+              je .key_down
+              cmp byte [rsp + 2], 0x43
+              je .key_right
+              cmp byte [rsp + 2], 0x44
+              je .key_left
+.key_up:
+              mov [player_dx], dword 0
+              mov [player_dy], dword -8
+              jmp .no_input
+.key_down:
+              mov [player_dx], dword 0
+              mov [player_dy], dword 8
+              jmp .no_input
+.key_right:
+              mov [player_dx], dword 8
+              mov [player_dy], dword 0
+              jmp .no_input
+.key_left:
+              mov [player_dx], dword -8
+              mov [player_dy], dword 0
+.no_input:
+              add rsp, 16
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
@@ -371,48 +414,14 @@ _start:
               syscall
               add rsp, 16
 
-              mov r8, 0
-              mov r9, 0
-
-              sub rsp, 16
-              mov rax, 0                      ; sys_read
-              mov rdi, 0                      ; stdin
-              mov rsi, rsp
-              mov rdx, 3                      ; num bytes
-              syscall
-              cmp byte [rsp], 0x1B            ; esc sequence
-              jne .no_input
-              cmp byte [rsp + 1], 0x5B        ; [ character
-              jne .no_input
-              cmp byte [rsp + 2], 0x41
-              je .key_up
-              cmp byte [rsp + 2], 0x42
-              je .key_down
-              cmp byte [rsp + 2], 0x43
-              je .key_right
-              cmp byte [rsp + 2], 0x44
-              je .key_left
-.key_up:
-              mov r8, 0
-              mov r9, -8
-              jmp .no_input
-.key_down:
-              mov r8, 0
-              mov r9, 8
-              jmp .no_input
-.key_right:
-              mov r8, 8
-              mov r9, 0
-              jmp .no_input
-.key_left:
-              mov r8, -8
-              mov r9, 0
-.no_input:
-              add rsp, 16
+              ; Get keyboard input
+              call keyboard
 
               ; Move fella
+              mov r8d, [player_dx]
               add [player_x], r8d
-              add [player_y], r9d
+              mov r8d, [player_dy]
+              add [player_y], r8d
 
               jmp .loop
 
