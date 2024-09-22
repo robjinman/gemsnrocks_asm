@@ -7,10 +7,10 @@ drw_fb_h:     dd 1080
 
 hello:        db 'Hello, World!', 10
 
-image_path:   db './data/image.bmp', 0
-image_w:      dd 64
-image_h:      dd 64
-image_size:   dd 64 * 64 * 4
+image_path:   db './data/circles.bmp', 0
+image_w:      dd 512
+image_h:      dd 512
+image_size:   dd 512 * 512 * 4
 
 player_x:     dd 900
 player_y:     dd 200
@@ -23,7 +23,7 @@ drw_buf:      resb 1920 * 4                 ; General purpose buffer
 termios_old:  resb 60                       ; Original terminal settings
 termios_new:  resb 60                       ; Modified terminal settings
 stdin_flags:  resq 1                        ; Original stdin flags
-image:        resb 64 * 64 * 4
+image:        resb 512 * 512 * 4
 
               SECTION .text
               global _start
@@ -144,12 +144,12 @@ drw_draw:
 ; r8      dstY
 ; r9      srcX
 ; stack   srcY
+;         w
+;         h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r10, [rsp + 8]            ; srcY
-
               push rbp
               mov rbp, rsp
-              sub rsp, 64
+              sub rsp, 80
 
               mov [rbp - 8], rdi            ; src
               mov [rbp - 16], rsi           ; srcW
@@ -157,7 +157,12 @@ drw_draw:
               mov [rbp - 32], rcx           ; dstX
               mov [rbp - 40], r8            ; dstY
               mov [rbp - 48], r9            ; srcX
+              mov r10, [rbp + 16]
               mov [rbp - 56], r10           ; srcY
+              mov r10, [rbp + 24]
+              mov [rbp - 64], r10           ; w
+              mov r10, [rbp + 32]
+              mov [rbp - 72], r10           ; h
 
               push r12
               push r13
@@ -166,10 +171,12 @@ drw_draw:
 
               xor r13, r13                  ; row
 .loop_row:
-              ; src offset = 4 * (srcW * row)
+              ; src offset = 4 * (srcW * (row + srcY) + srcX)
               ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx)
               mov r14, r13
-              imul r14, [rbp - 16]          ; srcW * row
+              add r14, [rbp - 56]           ; row + srcY
+              imul r14, [rbp - 16]          ; srcW * (row + srcY)
+              add r14, [rbp - 48]           ; srcW * (row + srcY) + srcX
               shl r14, 2                    ; src offset
 
               mov r15, r13
@@ -182,7 +189,7 @@ drw_draw:
               mov rax, 17                   ; sys_pread64
               mov rdi, [drw_fbfd]
               lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 16]           ; srcW
+              mov rdx, [rbp - 64]           ; w
               shl rdx, 2                    ; num bytes
               mov r10, r15                  ; frame buffer offset
               syscall
@@ -191,20 +198,20 @@ drw_draw:
               mov rdi, [rbp - 8]            ; src
               add rdi, r14
               lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 16]           ; srcW
+              mov rdx, [rbp - 64]           ; w
               call drw_blit
 
               ; Write buffer to screen
               mov rax, 18                   ; sys_pwrite64
               mov rdi, [drw_fbfd]
               lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 16]           ; srcW
+              mov rdx, [rbp - 64]           ; w
               shl rdx, 2                    ; num bytes
               mov r10, r15                  ; frame buffer offset
               syscall
 
               inc r13
-              cmp r13, [rbp - 24]           ; srcH
+              cmp r13, [rbp - 72]           ; h
               jl .loop_row
 
               pop r15
@@ -421,17 +428,21 @@ _start:
               mov r8, 0xFF44220F
               call drw_fill
 
-              sub rsp, 16
+              sub rsp, 32
               lea rdi, [rel image]
               mov esi, [image_w]
               mov edx, [image_h]
               mov ecx, [player_x]
               mov r8d, [player_y]
-              mov r9, 0                       ; srcX
-              mov r10, 0
-              mov [rsp], r10                  ; srcY
+              mov r9, 128                     ; srcX
+              mov r10, 192                    ; srcY
+              mov [rsp], r10
+              mov r10, 64                     ; w
+              mov [rsp + 8], r10
+              mov r10, 64                     ; h
+              mov [rsp + 16], r10
               call drw_draw
-              add rsp, 16
+              add rsp, 32
 
               ; Sleep
               sub rsp, 16
