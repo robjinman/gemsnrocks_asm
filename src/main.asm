@@ -137,83 +137,82 @@ drw_blit:
 drw_draw:
 ; Copy pixels from src buffer to frame buffer
 ;
-; TODO: Add srcX, srcY, w, and h params to enable copying a subregion of src
-;
 ; rdi     src
 ; rsi     srcW
 ; rdx     srcH
 ; rcx     dstX
 ; r8      dstY
+; r9      srcX
+; stack   srcY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r10, [rsp + 8]            ; srcY
+
+              push rbp
+              mov rbp, rsp
+              sub rsp, 64
+
+              mov [rbp - 8], rdi            ; src
+              mov [rbp - 16], rsi           ; srcW
+              mov [rbp - 24], rdx           ; srcH
+              mov [rbp - 32], rcx           ; dstX
+              mov [rbp - 40], r8            ; dstY
+              mov [rbp - 48], r9            ; srcX
+              mov [rbp - 56], r10           ; srcY
+
               push r12
               push r13
               push r14
               push r15
-
-              mov r9, rdi                   ; src
-              mov r11, rsi                  ; srcW
-              mov r12, rdx                  ; srcH
 
               xor r13, r13                  ; row
 .loop_row:
               ; src offset = 4 * (srcW * row)
               ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx)
               mov r14, r13
-              imul r14, r11                 ; srcW * row
+              imul r14, [rbp - 16]          ; srcW * row
               shl r14, 2                    ; src offset
 
               mov r15, r13
-              add r15, r8                   ; row + dstY
+              add r15, [rbp - 40]           ; row + dstY
               imul r15d, [drw_fb_w]         ; drw_fb_w * (row + dstY)
-              add r15, rcx                  ; drw_fb_w * (row + dstY) + dstX
+              add r15, [rbp - 32]           ; drw_fb_w * (row + dstY) + dstX
               shl r15, 2                    ; dst offset
 
               ; Read bytes from frame buffer into buffer
               mov rax, 17                   ; sys_pread64
               mov rdi, [drw_fbfd]
               lea rsi, [rel drw_buf]
-              mov rdx, r11                  ; num bytes
-              shl rdx, 2
+              mov rdx, [rbp - 16]           ; srcW
+              shl rdx, 2                    ; num bytes
               mov r10, r15                  ; frame buffer offset
-              push r11
-              push rcx
               syscall
-              pop rcx
-              pop r11
 
               ; Blit pixels from src image to buffer
-              mov rdi, r9
+              mov rdi, [rbp - 8]            ; src
               add rdi, r14
-              mov rdx, r11                  ; num pixels
-              push rcx
-              push r8
-              push r9
-              push r10
+              lea rsi, [rel drw_buf]
+              mov rdx, [rbp - 16]           ; srcW
               call drw_blit
-              pop r10
-              pop r9
-              pop r8
-              pop rcx
 
               ; Write buffer to screen
               mov rax, 18                   ; sys_pwrite64
               mov rdi, [drw_fbfd]
-              mov rdx, r11                  ; num bytes
-              shl rdx, 2
-              push r11
-              push rcx
+              lea rsi, [rel drw_buf]
+              mov rdx, [rbp - 16]           ; srcW
+              shl rdx, 2                    ; num bytes
+              mov r10, r15                  ; frame buffer offset
               syscall
-              pop rcx
-              pop r11
 
               inc r13
-              cmp r13, r12
+              cmp r13, [rbp - 24]           ; srcH
               jl .loop_row
 
               pop r15
               pop r14
               pop r13
               pop r12
+              mov rsp, rbp
+              pop rbp
 
               ret
 
@@ -422,12 +421,17 @@ _start:
               mov r8, 0xFF44220F
               call drw_fill
 
+              sub rsp, 16
               lea rdi, [rel image]
               mov esi, [image_w]
               mov edx, [image_h]
               mov ecx, [player_x]
               mov r8d, [player_y]
+              mov r9, 0                       ; srcX
+              mov r10, 0
+              mov [rsp], r10                  ; srcY
               call drw_draw
+              add rsp, 16
 
               ; Sleep
               sub rsp, 16
