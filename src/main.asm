@@ -22,6 +22,7 @@ drw_buf:      resb 1920 * 4                 ; General purpose buffer
 
 termios_old:  resb 60                       ; Original terminal settings
 termios_new:  resb 60                       ; Modified terminal settings
+stdin_flags:  resq 1                        ; Original stdin flags
 image:        resb 64 * 64 * 4
 
               SECTION .text
@@ -293,6 +294,19 @@ drw_fill:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 initialise:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rax, 72                   ; sys_fcntl
+              mov rdi, 0                    ; stdin
+              mov rsi, 3                    ; F_GETFL (get file status flags)
+              syscall
+              mov [stdin_flags], rax
+
+              mov rdi, 0                    ; stdin
+              mov rsi, 4                    ; F_SETFL (set file status flags)
+              mov rdx, rax                  ; Copy old flags to rdx
+              or rdx, 0x800                 ; O_NONBLOCK = 0x800 (set non-blocking flag)
+              mov rax, 72                   ; sys_fcntl
+              syscall
+
               ; Get current terminal settings
               mov rax, 16                   ; sys_ioctl
               mov rdi, 0                    ; stdin
@@ -333,6 +347,12 @@ terminate:
               mov rdx, termios_old
               syscall
 
+              mov rdi, 0                    ; stdin
+              mov rsi, 4                    ; F_SETFL (set file status flags)
+              mov rdx, [stdin_flags]        ; Copy old flags to rdx
+              mov rax, 72                   ; sys_fcntl
+              syscall
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -344,10 +364,12 @@ keyboard:
               mov rsi, rsp
               mov rdx, 3                      ; num bytes
               syscall
+              cmp rax, -1
+              je .no_input
               cmp byte [rsp], 0x1B            ; esc sequence
               jne .no_input
               cmp byte [rsp + 1], 0x5B        ; [ character
-              jne .no_input
+              jne .quit
               cmp byte [rsp + 2], 0x41
               je .key_up
               cmp byte [rsp + 2], 0x42
@@ -371,9 +393,14 @@ keyboard:
 .key_left:
               mov [player_dx], dword -8
               mov [player_dy], dword 0
+              jmp .no_input
+.quit:
+              add rsp, 16
+              mov rax, -1
+              ret
 .no_input:
               add rsp, 16
-
+              mov rax, 0
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -416,6 +443,8 @@ _start:
 
               ; Get keyboard input
               call keyboard
+              cmp rax, -1
+              je .exit
 
               ; Move fella
               mov r8d, [player_dx]
@@ -425,6 +454,7 @@ _start:
 
               jmp .loop
 
+.exit:
               mov rax, 1                      ; sys_write
               mov rdi, 1                      ; stdout
               lea rsi, [rel hello]
