@@ -28,12 +28,38 @@ image:        resb 512 * 512 * 4
               SECTION .text
               global _start
 
+; Process memory layout
+;----------------------
+;
+;  Higher Addresses
+; |--------------|
+; | Stack        |  (Grows Downwards)
+; |______________|
+; |              |
+; |              |  (Unavailable)
+; |______________|
+; | Heap         |  (Grows Upwards)
+; |              |
+; |              |
+; |              |
+; |--------------|  <-- Program Break (Manipulated by sbrk)
+; | BSS Segment  |  (Uninitialized Data)
+; |--------------|
+; | Data Segment |  (Initialized Data)
+; |--------------|
+; | Text Segment |  (Code)
+; |--------------|
+;  Lower Addresses
+;
+;
 ; Calling convention
 ; ------------------
+;
 ; To call a function, fill registers in order.
 ;   For integers and pointers: rdi, rsi, rdx, rcx, r8, r9
 ;   For floating-point (float, double): xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7
-; Push args to stack right-to-left (for C function)
+; For system calls, the order is: rdi, rsi, rdx, r10, r8, r9
+; Push remaining args to stack (in order right-to-left for C functions)
 ; The call instruction will then push the return address
 ; Functions shouldn't change: rbp, rbx, r12, r13, r14, r15
 ; Functions return integers in rax and floats in xmm0
