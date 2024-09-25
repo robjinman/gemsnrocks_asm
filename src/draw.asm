@@ -53,9 +53,9 @@ drw_term:
 drw_load_bmp:
 ; Load a .bmp file into the given buffer
 ;
-; rdi     path
-; rsi     buffer
-; rdx     bytes
+; rdi path
+; rsi buffer
+; rdx bytes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               ; Open file
               push rsi
@@ -85,9 +85,9 @@ drw_load_bmp:
 drw_blit:
 ; Copy pixels from src to dst buffers, with alpha masking
 ;
-; rdi     src
-; rsi     dst
-; rdx     count (in pixels)
+; rdi src
+; rsi dst
+; rdx count (in pixels)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push r11
 
@@ -119,15 +119,15 @@ drw_blit:
 drw_draw:
 ; Copy pixels from src buffer to frame buffer
 ;
-; rdi     src
-; rsi     srcW
-; rdx     srcH
-; rcx     dstX
-; r8      dstY
-; r9      srcX
-; stack   srcY
-;         w
-;         h
+; rdi src
+; rsi srcW
+; rdx srcH
+; rcx dstX
+; r8  dstY
+; r9  srcX
+;     srcY
+;     w
+;     h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
               mov rbp, rsp
@@ -209,8 +209,8 @@ drw_draw:
 drw_fill_buf:
 ; Fills the buffer with a 64-bit value
 ;
-; rdi     value
-; rsi     count
+; rdi value
+; rsi count
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               lea rdx, [rel drw_buf]
               xor rcx, rcx
@@ -230,11 +230,11 @@ drw_fill_buf:
 drw_fill:
 ; Fills the rectangular region with a colour
 ;
-; rdi     dstX
-; rsi     dstY
-; rdx     w
-; rcx     h
-; r8      colour
+; rdi dstX
+; rsi dstY
+; rdx w
+; rcx h
+; r8  colour
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push r12
               push r13
