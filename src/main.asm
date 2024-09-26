@@ -54,15 +54,15 @@ image:        resb 512 * 512 * 4
 ;  Higher Addresses
 ; |--------------|
 ; | Stack        |  (Grows Downwards)
-; |______________|
-; |              |
+; |--------------|
 ; |              |  (Unavailable)
-; |______________|
+; |              |
+; |--------------| <-- Program Break (Manipulated by sbrk)
 ; | Heap         |  (Grows Upwards)
 ; |              |
 ; |              |
 ; |              |
-; |--------------|  <-- Program Break (Manipulated by sbrk)
+; |--------------|
 ; | BSS Segment  |  (Uninitialized Data)
 ; |--------------|
 ; | Data Segment |  (Initialized Data)
