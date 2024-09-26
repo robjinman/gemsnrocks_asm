@@ -1,10 +1,8 @@
-%include      "src/common.mac"
-
 %define       CELL_W 64
 %define       CELL_H 64
-%define       GRID_W FB_W / CELL_W
-%define       GRID_H FB_H / CELL_H
-%define       BACKGROUND_COLOUR 0xFF44220F
+%define       GRID_W 100
+%define       GRID_H 80
+%define       BACKGROUND_COLOUR 0xFF112233
 
               SECTION .data
 
@@ -45,6 +43,10 @@ image:        resb 512 * 512 * 4
               extern drw_load_bmp
               extern drw_term
               extern drw_flush
+              extern drw_fb_w
+              extern drw_fb_h
+
+              extern util_alloc
 
               global _start
 
@@ -90,8 +92,8 @@ image:        resb 512 * 512 * 4
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 construct_scene:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdi, 10
-              mov rsi, 5
+              mov rdi, 1
+              mov rsi, 1
               call construct_player
 
               ret
@@ -161,42 +163,6 @@ terminate:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-util_alloc:
-; Allocate memory
-;
-; rdi num bytes
-;
-; Returns
-; rax pointer to memory
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r11, rdi
-
-              mov rax, 9                    ; sys_mmap
-              mov rdi, 0                    ; addr
-              mov rsi, r11                  ; num bytes
-              mov rdx, 0b11                 ; PROT_READ | PROT_WRITE
-              mov r10, 0b00100010           ; MAP_PRIVATE | MAP_ANONYMOUS
-              mov r8, -1                    ; file descriptor
-              mov r9, 0                     ; offset
-
-              push rdi
-              syscall
-              pop rdi
-
-              ; Zero memory
-              xor r9, r9
-              xor rcx, rcx
-              mov r8, rax
-.loop:
-              add r8, rcx
-              mov [r8], r9
-
-              inc rcx
-              cmp rcx, rdi
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_insert:
 ; rdi gridX
 ; rsi gridY
@@ -204,6 +170,7 @@ grid_insert:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               imul rsi, GRID_W
               add rsi, rdi
+              shl rsi, 3
               lea r8, [rel grid]
               add r8, rsi
               mov [r8], rdx
@@ -387,8 +354,8 @@ render_scene:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov rdi, 0
               mov rsi, 0
-              mov rdx, FB_W
-              mov rcx, FB_H
+              mov edx, [drw_fb_w]
+              mov ecx, [drw_fb_h]
               mov r8, BACKGROUND_COLOUR
               call drw_fill
 

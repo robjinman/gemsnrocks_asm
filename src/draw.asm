@@ -1,22 +1,23 @@
-%include      "src/common.mac"
-
               SECTION .data
 
 drw_fb_path:  db '/dev/fb0', 0
 drw_fbfd:     dd 0
-
-              SECTION .bss
-
-drw_buf:      resb FB_W * FB_H * 4
+drw_fb_w:     dd 0
+drw_fb_h:     dd 0
+drw_buf:      dq 0
 
               SECTION .text
 
+              global drw_fb_w
+              global drw_fb_h
               global drw_init
               global drw_term
               global drw_draw
               global drw_load_bmp
               global drw_fill
               global drw_flush
+
+              extern util_alloc
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_init:
@@ -29,6 +30,30 @@ drw_init:
               mov rdx, 0                    ; flags
               syscall
               mov [drw_fbfd], eax
+
+              sub rsp, 160
+
+              ; Get screen resolution
+              mov rax, 16                   ; sys_ioctl
+              mov rdi, [drw_fbfd]
+              mov rsi, 0x4600               ; FBIOGET_VSCREENINFO
+              mov rdx, rsp
+              syscall
+
+              mov r11d, [rsp]
+              mov [drw_fb_w], r11d          ; width
+              mov r11d, [rsp + 4]
+              mov [drw_fb_h], r11d          ; height
+
+              ; Allocate space for screen buffer
+              mov edi, [drw_fb_w]
+              mov r11d, [drw_fb_h]
+              imul rdi, r11
+              shl rdi, 2
+              call util_alloc
+              mov [drw_buf], rax
+
+              add rsp, 160
 
               ret
 
@@ -111,7 +136,7 @@ drw_draw:
               xor r13, r13                  ; row
 .loop_row:
               ; src offset = 4 * (srcW * (row + srcY) + srcX + col)
-              ; dst offset = 4 * (FB_W * (row + dstY) + dstx + col)
+              ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx + col)
 
               mov r8, r13
               add r8, [rbp - 56]            ; row + srcY
@@ -120,8 +145,8 @@ drw_draw:
 
               mov r9, r13
               add r9, [rbp - 40]            ; row + dstY
-              imul r9, FB_W                 ; FB_W * (row + dstY)
-              add r9, [rbp - 32]            ; FB_W * (row + dstY) + dstX
+              imul r9d, [drw_fb_w]          ; drw_fb_w * (row + dstY)
+              add r9, [rbp - 32]            ; drw_fb_w * (row + dstY) + dstX
 
               xor r14, r14                  ; col
 .loop_col:
@@ -130,13 +155,13 @@ drw_draw:
               shl r10, 2                    ; src offset
 
               mov r11, r9
-              add r11, r14                  ; FB_W * (row + dstY) + dstX + col
+              add r11, r14                  ; drw_fb_w * (row + dstY) + dstX + col
               shl r11, 2                    ; dst offset
 
               mov rdi, [rbp - 8]            ; src
               add rdi, r10                  ; src + src offset
 
-              lea rsi, [rel drw_buf]        ; dst
+              mov rsi, [drw_buf]            ; dst
               add rsi, r11                  ; dst + dst offset
 
               mov r15d, [rdi]               ; src pixel
@@ -171,8 +196,10 @@ drw_flush:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov rax, 18                   ; sys_pwrite64
               mov rdi, [drw_fbfd]
-              lea rsi, [drw_buf]
-              mov rdx, FB_W * FB_H * 4      ; num bytes
+              mov rsi, [drw_buf]
+              mov edx, [drw_fb_w]
+              imul edx, [drw_fb_h]
+              shl rdx, 2                    ; num bytes
               mov r10, 0                    ; destination offset
               syscall
 
@@ -203,11 +230,11 @@ drw_fill:
               xor r14, r14                  ; column
 .loop_col:
               mov r15, r13
-              imul r15, FB_W
+              imul r15d, [drw_fb_w]
               add r15, r14
               shl r15, 2                    ; dst offset
 
-              lea rdi, [rel drw_buf]
+              mov rdi, [drw_buf]
               add rdi, r15
               mov [rdi], r8d
 
