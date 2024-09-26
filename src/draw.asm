@@ -4,13 +4,10 @@
 
 drw_fb_path:  db '/dev/fb0', 0
 drw_fbfd:     dd 0
-drw_fb_bytes: dq 0
-drw_fb_w:     dd FB_W
-drw_fb_h:     dd FB_H
 
               SECTION .bss
 
-drw_buf:      resb FB_W * 4                 ; General purpose buffer
+drw_buf:      resb FB_W * FB_H * 4
 
               SECTION .text
 
@@ -19,6 +16,7 @@ drw_buf:      resb FB_W * 4                 ; General purpose buffer
               global drw_draw
               global drw_load_bmp
               global drw_fill
+              global drw_flush
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_init:
@@ -31,13 +29,6 @@ drw_init:
               mov rdx, 0                    ; flags
               syscall
               mov [drw_fbfd], eax
-
-              ; Compute total frame buffer size
-              mov eax, [drw_fb_w]
-              mov edi, [drw_fb_h]
-              mul edi
-              shl rax, 2
-              mov [drw_fb_bytes], rax
 
               ret
 
@@ -82,40 +73,6 @@ drw_load_bmp:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-drw_blit:
-; Copy pixels from src to dst buffers, with alpha masking
-;
-; rdi src
-; rsi dst
-; rdx count (in pixels)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push r11
-
-              xor rcx, rcx
-.loop:
-              mov r8, rcx
-              shl r8, 2                     ; offset in bytes
-
-              mov r9, r8
-              add r9, rdi                   ; src address
-              add r8, rsi                   ; dst address
-
-              mov r10d, [r9]
-              mov rax, r10
-              mov r11, 0xFF000000
-              and rax, r11
-              jz .skip
-              mov [r8], r10d
-.skip:
-              inc rcx
-              cmp rcx, rdx
-              jl .loop
-
-              pop r11
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_draw:
 ; Copy pixels from src buffer to frame buffer
 ;
@@ -153,47 +110,51 @@ drw_draw:
 
               xor r13, r13                  ; row
 .loop_row:
-              ; src offset = 4 * (srcW * (row + srcY) + srcX)
-              ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx)
-              mov r14, r13
-              add r14, [rbp - 56]           ; row + srcY
-              imul r14, [rbp - 16]          ; srcW * (row + srcY)
-              add r14, [rbp - 48]           ; srcW * (row + srcY) + srcX
-              shl r14, 2                    ; src offset
+              ; src offset = 4 * (srcW * (row + srcY) + srcX + col)
+              ; dst offset = 4 * (FB_W * (row + dstY) + dstx + col)
 
-              mov r15, r13
-              add r15, [rbp - 40]           ; row + dstY
-              imul r15d, [drw_fb_w]         ; drw_fb_w * (row + dstY)
-              add r15, [rbp - 32]           ; drw_fb_w * (row + dstY) + dstX
-              shl r15, 2                    ; dst offset
+              mov r8, r13
+              add r8, [rbp - 56]            ; row + srcY
+              imul r8, [rbp - 16]           ; srcW * (row + srcY)
+              add r8, [rbp - 48]            ; srcW * (row + srcY) + srcX
 
-              ; Read bytes from frame buffer into buffer
-              mov rax, 17                   ; sys_pread64
-              mov rdi, [drw_fbfd]
-              lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 64]           ; w
-              shl rdx, 2                    ; num bytes
-              mov r10, r15                  ; frame buffer offset
-              syscall
+              mov r9, r13
+              add r9, [rbp - 40]            ; row + dstY
+              imul r9, FB_W                 ; FB_W * (row + dstY)
+              add r9, [rbp - 32]            ; FB_W * (row + dstY) + dstX
 
-              ; Blit pixels from src image to buffer
+              xor r14, r14                  ; col
+.loop_col:
+              mov r10, r8
+              add r10, r14                  ; srcW * (row + srcY) + srcX + col
+              shl r10, 2                    ; src offset
+
+              mov r11, r9
+              add r11, r14                  ; FB_W * (row + dstY) + dstX + col
+              shl r11, 2                    ; dst offset
+
               mov rdi, [rbp - 8]            ; src
-              add rdi, r14
-              lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 64]           ; w
-              call drw_blit
+              add rdi, r10                  ; src + src offset
 
-              ; Write buffer to screen
-              mov rax, 18                   ; sys_pwrite64
-              mov rdi, [drw_fbfd]
-              lea rsi, [rel drw_buf]
-              mov rdx, [rbp - 64]           ; w
-              shl rdx, 2                    ; num bytes
-              mov r10, r15                  ; frame buffer offset
-              syscall
+              lea rsi, [rel drw_buf]        ; dst
+              add rsi, r11                  ; dst + dst offset
+
+              mov r15d, [rdi]               ; src pixel
+
+              ; Copy pixel if alpha component is non-zero
+              mov rax, r15
+              mov rdx, 0xFF000000
+              and rax, rdx
+              jz .skip
+              mov [rsi], r15d               ; copy pixel
+.skip:
+
+              inc r14
+              cmp r14, [rbp - 64]
+              jl .loop_col
 
               inc r13
-              cmp r13, [rbp - 72]           ; h
+              cmp r13, [rbp - 72]
               jl .loop_row
 
               pop r15
@@ -206,23 +167,14 @@ drw_draw:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-drw_fill_buf:
-; Fills the buffer with a 64-bit value
-;
-; rdi value
-; rsi count
+drw_flush:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              lea rdx, [rel drw_buf]
-              xor rcx, rcx
-.loop:
-              mov r8, rcx
-              shl r8, 2
-              add r8, rdx
-              mov [r8], rdi
-
-              inc rcx
-              cmp rcx, rsi
-              jl .loop
+              mov rax, 18                   ; sys_pwrite64
+              mov rdi, [drw_fbfd]
+              lea rsi, [drw_buf]
+              mov rdx, FB_W * FB_H * 4      ; num bytes
+              mov r10, 0                    ; destination offset
+              syscall
 
               ret
 
@@ -242,31 +194,26 @@ drw_fill:
               push r15
 
               mov r9, rdi                   ; dstX
-              mov r14, rsi                  ; dstY
+              mov r10, rsi                  ; dstY
               mov r11, rdx                  ; w
               mov r12, rcx                  ; h
 
-              mov rdi, r8
-              mov rsi, r11
-              call drw_fill_buf
-
               xor r13, r13                  ; row
 .loop_row:
-              mov r15, r14
-              add r15, r13
-              imul r15d, [drw_fb_w]
-              add r15, r9
-              shl r15, 2                    ; offset into frame buffer
+              xor r14, r14                  ; column
+.loop_col:
+              mov r15, r13
+              imul r15, FB_W
+              add r15, r14
+              shl r15, 2                    ; dst offset
 
-              mov rax, 18                   ; sys_pwrite64
-              mov rdi, [drw_fbfd]
-              lea rsi, [drw_buf]
-              mov rdx, r11                  ; num bytes
-              shl rdx, 2
-              mov r10, r15                  ; destination offset
-              push r11
-              syscall
-              pop r11
+              lea rdi, [rel drw_buf]
+              add rdi, r15
+              mov [rdi], r8d
+
+              inc r14
+              cmp r14, r11
+              jl .loop_col
 
               inc r13
               cmp r13, r12

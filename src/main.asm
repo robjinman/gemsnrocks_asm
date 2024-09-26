@@ -44,6 +44,7 @@ image:        resb 512 * 512 * 4
               extern drw_fill
               extern drw_load_bmp
               extern drw_term
+              extern drw_flush
 
               global _start
 
@@ -177,7 +178,21 @@ util_alloc:
               mov r10, 0b00100010           ; MAP_PRIVATE | MAP_ANONYMOUS
               mov r8, -1                    ; file descriptor
               mov r9, 0                     ; offset
+
+              push rdi
               syscall
+              pop rdi
+
+              ; Zero memory
+              xor r9, r9
+              xor rcx, rcx
+              mov r8, rax
+.loop:
+              add r8, rcx
+              mov [r8], r9
+
+              inc rcx
+              cmp rcx, rdi
 
               ret
 
@@ -395,6 +410,8 @@ render_scene:
               cmp rcx, GRID_H * GRID_W
               jl .loop
 
+              call drw_flush
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -424,7 +441,7 @@ keyboard:
               mov rdi, [player]
               mov rsi, 0                    ; Animation ID
               mov rdx, 0                        ; dx
-              mov rcx, -CELL_H/ANIM_NUM_FRAMES  ; dy
+              mov rcx, 0-CELL_H/ANIM_NUM_FRAMES ; dy
               call obj_play_anim
               jmp .no_input
 .key_down:
@@ -444,7 +461,7 @@ keyboard:
 .key_left:
               mov rdi, [player]
               mov rsi, 3                    ; Animation ID
-              mov rdx, -CELL_W/ANIM_NUM_FRAMES  ; dx
+              mov rdx, 0-CELL_W/ANIM_NUM_FRAMES ; dx
               mov rcx, 0                        ; dy
               call obj_play_anim
               jmp .no_input
