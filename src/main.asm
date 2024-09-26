@@ -6,34 +6,62 @@
 
               SECTION .data
 
-goodbye:      db 'Good bye!', 10
+goodbye       db 'Good bye!', 10
 
-image_path:   db './data/circles.bmp', 0
-image_w:      dd 512
-image_h:      dd 512
-image_size:   dd 512 * 512 * 4
+img_plyr_path db './data/player.bmp', 0
+img_soil_path db './data/soil.bmp', 0
+img_rock_path db './data/rock.bmp', 0
+img_wall_path db './data/wall.bmp', 0
+img_exit_path db './data/exit.bmp', 0
 
               SECTION .bss
 
-%define       OBJ_SIZE 64
-%define       OBJ_OFFSET_X 0
-%define       OBJ_OFFSET_Y 8
-%define       OBJ_OFFSET_IMG 16             ; Pointer to sprite sheet
-%define       OBJ_OFFSET_IMG_ROW 24         ; Current row (animation)
-%define       OBJ_OFFSET_FRAME 32           ; Current column (frame)
-%define       OBJ_OFFSET_ANIM_ST 40         ; 1 = playing, 0 = paused
-%define       OBJ_OFFSET_DX 48
-%define       OBJ_OFFSET_DY 56
+%define       OBJ_SIZE 72
+%define       OBJ_OFFSET_TYPE 0
+%define       OBJ_OFFSET_X 8
+%define       OBJ_OFFSET_Y 16
+%define       OBJ_OFFSET_IMG 24             ; Pointer to sprite sheet
+%define       OBJ_OFFSET_IMG_ROW 32         ; Current row (animation)
+%define       OBJ_OFFSET_FRAME 40           ; Current column (frame)
+%define       OBJ_OFFSET_ANIM_ST 48         ; 1 = playing, 0 = paused
+%define       OBJ_OFFSET_DX 56
+%define       OBJ_OFFSET_DY 64
+
+%define       OBJ_TYPE_PLYR 100
+%define       OBJ_TYPE_SOIL 101
+%define       OBJ_TYPE_ROCK 102
+%define       OBJ_TYPE_WALL 103
+%define       OBJ_TYPE_EXIT 104
 
 %define       ANIM_NUM_FRAMES 8
 
 grid:         resq GRID_W * GRID_H          ; Pointers to game objects
 player:       resq 1
 
-termios_old:  resb 60                       ; Original terminal settings
-termios_new:  resb 60                       ; Modified terminal settings
-stdin_flags:  resq 1                        ; Original stdin flags
-image:        resb 512 * 512 * 4
+termios_old   resb 60                       ; Original terminal settings
+termios_new   resb 60                       ; Modified terminal settings
+stdin_flags   resq 1                        ; Original stdin flags
+
+; First 8 bytes contains width and height
+%define       IMG_PLYR_W 512
+%define       IMG_PLYR_H 512
+img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_W * 4
+
+%define       IMG_SOIL_W 512
+%define       IMG_SOIL_H 64
+img_soil      resb 8 + IMG_SOIL_W * IMG_SOIL_W * 4
+
+%define       IMG_ROCK_W 512
+%define       IMG_ROCK_H 256
+img_rock      resb 8 + IMG_ROCK_W * IMG_ROCK_W * 4
+
+%define       IMG_WALL_W 512
+%define       IMG_WALL_H 64
+img_wall      resb 8 + IMG_WALL_W * IMG_WALL_W * 4
+
+%define       IMG_EXIT_W 512
+%define       IMG_EXIT_H 128
+img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_W * 4
 
               SECTION .text
 
@@ -90,11 +118,54 @@ image:        resb 512 * 512 * 4
 ; TODO: Always push at least 8 bytes before every call?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+load_images:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel img_plyr_path]
+              lea rsi, [rel img_plyr]
+              mov rdx, IMG_PLYR_W
+              mov rcx, IMG_PLYR_H
+              call drw_load_bmp
+
+              lea rdi, [rel img_soil_path]
+              lea rsi, [rel img_soil]
+              mov rdx, IMG_SOIL_W
+              mov rcx, IMG_SOIL_H
+              call drw_load_bmp
+
+              lea rdi, [rel img_rock_path]
+              lea rsi, [rel img_rock]
+              mov rdx, IMG_ROCK_W 
+              mov rcx, IMG_ROCK_H
+              call drw_load_bmp
+
+              lea rdi, [rel img_wall_path]
+              lea rsi, [rel img_wall]
+              mov rdx, IMG_WALL_W
+              mov rcx, IMG_WALL_H
+              call drw_load_bmp
+
+              lea rdi, [rel img_exit_path]
+              lea rsi, [rel img_exit]
+              mov rdx, IMG_EXIT_W
+              mov rcx, IMG_EXIT_H
+              call drw_load_bmp
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 construct_scene:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              call load_images
+
               mov rdi, 1
               mov rsi, 1
               call construct_player
+
+              mov rdi, OBJ_TYPE_SOIL
+              mov rsi, 8
+              mov rdx, 5
+              lea rcx, [rel img_soil]
+              call construct_object
 
               ret
 
@@ -253,31 +324,33 @@ update_scene:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 construct_object:
-; rdi gridX
-; rsi gridY
-; rdx image
+; rdi type
+; rsi gridX
+; rdx gridY
+; rcx image
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
               mov rbp, rsp
-              sub rsp, 32
+              sub rsp, 48
 
-              mov [rbp - 8], rdi            ; gridX
-              mov [rbp - 16], rsi           ; gridY
-              mov [rbp - 24], rdx           ; image
+              mov [rbp - 8], rdi            ; type
+              mov [rbp - 16], rsi           ; gridX
+              mov [rbp - 24], rdx           ; gridY
+              mov [rbp - 32], rcx           ; image
 
               mov rdi, OBJ_SIZE
               call util_alloc
 
               mov r11, rax                  ; pointer
 
-              mov rdi, [rbp - 8]            ; gridX
+              mov rdi, [rbp - 16]           ; gridX
               imul rdi, CELL_W              ; worldX
               mov [r11 + OBJ_OFFSET_X], rdi
-              mov rdi, [rbp - 16]           ; gridY
+              mov rdi, [rbp - 24]           ; gridY
               imul rdi, CELL_H              ; worldY
               mov [r11 + OBJ_OFFSET_Y], rdi
 
-              mov rdi, [rbp - 24]           ; image
+              mov rdi, [rbp - 32]           ; image
               mov [r11 + OBJ_OFFSET_IMG], rdi
 
               mov rdi, 0
@@ -285,8 +358,8 @@ construct_object:
               mov [r11 + OBJ_OFFSET_FRAME], rdi
               mov [r11 + OBJ_OFFSET_ANIM_ST], rdi
 
-              mov rdi, [rbp - 8]            ; gridX
-              mov rsi, [rbp - 16]           ; gridY
+              mov rdi, [rbp - 16]           ; gridX
+              mov rsi, [rbp - 24]           ; gridY
               mov rdx, r11                  ; pointer
               call grid_insert
 
@@ -318,7 +391,10 @@ construct_player:
 ; rdi gridX
 ; rsi gridY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              lea rdx, [rel image]
+              mov rdx, rsi
+              mov rsi, rdi
+              mov rdi, OBJ_TYPE_PLYR
+              lea rcx, [rel img_plyr]
               call construct_object
               mov [player], rax
 
@@ -331,19 +407,15 @@ obj_draw:
               sub rsp, 32
               mov r11, rdi
               mov rdi, [r11 + OBJ_OFFSET_IMG]
-              mov esi, [image_w]            ; TODO
-              mov edx, [image_h]
-              mov rcx, [r11 + OBJ_OFFSET_X]
-              mov r8, [r11 + OBJ_OFFSET_Y]
-              mov r9, [r11 + OBJ_OFFSET_FRAME]
-              imul r9, CELL_W               ; srcX
-              mov r10, [r11 + OBJ_OFFSET_IMG_ROW]
-              imul r10, CELL_H              ; srcY
-              mov [rsp], r10
-              mov r10, CELL_W               ; w
-              mov [rsp + 8], r10
+              mov rsi, [r11 + OBJ_OFFSET_X]
+              mov rdx, [r11 + OBJ_OFFSET_Y]
+              mov rcx, [r11 + OBJ_OFFSET_FRAME]
+              imul rcx, CELL_W              ; srcX
+              mov r8, [r11 + OBJ_OFFSET_IMG_ROW]
+              imul r8, CELL_H               ; srcY
+              mov r9, CELL_W                ; w
               mov r10, CELL_H               ; h
-              mov [rsp + 16], r10
+              mov [rsp], r10
               call drw_draw
               add rsp, 32
 
@@ -445,12 +517,6 @@ keyboard:
 _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
-
-              lea rdi, [rel image_path]
-              lea rsi, [rel image]
-              mov rdx, [image_size]
-              call drw_load_bmp
-
               call construct_scene
 
               ; Game loop

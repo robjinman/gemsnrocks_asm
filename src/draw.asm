@@ -1,10 +1,10 @@
               SECTION .data
 
-drw_fb_path:  db '/dev/fb0', 0
-drw_fbfd:     dd 0
-drw_fb_w:     dd 0
-drw_fb_h:     dd 0
-drw_buf:      dq 0
+drw_fb_path   db '/dev/fb0', 0
+drw_fbfd      dd 0
+drw_fb_w      dd 0
+drw_fb_h      dd 0
+drw_buf       dq 0
 
               SECTION .text
 
@@ -71,24 +71,36 @@ drw_load_bmp:
 ;
 ; rdi path
 ; rsi buffer
-; rdx bytes
+; rdx w
+; rcx h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; Open file
               push rsi
               push rdx
+              push rcx
 
+              ; Open file
               mov rax, 2                    ; sys_open
               mov rsi, 2                    ; O_RDWR
               mov rdx, 0                    ; flags
               syscall
-              mov rdi, rax
+              mov rdi, rax                  ; file descriptor
 
+              pop rcx
               pop rdx
               pop rsi
 
+              ; Store width and height at beginning of buffer
+              mov [rsi], edx
+              add rsi, 4
+              mov [rsi], ecx
+              add rsi, 4
+
               ; Load data from file
               mov rax, 17                   ; sys_pread64
-              mov r10, 54
+              imul rdx, rcx
+              shl rdx, 2                    ; num bytes
+              mov r10, 54                   ; offset
+
               push r11
               push rcx
               syscall
@@ -99,34 +111,35 @@ drw_load_bmp:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_draw:
-; Copy pixels from src buffer to frame buffer
+; Copy pixels from src image to frame buffer
 ;
-; rdi src
-; rsi srcW
-; rdx srcH
-; rcx dstX
-; r8  dstY
-; r9  srcX
-;     srcY
-;     w
+; rdi image
+; rsi dstX
+; rdx dstY
+; rcx srcX
+; r8  srcY
+; r9  w
 ;     h
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
               mov rbp, rsp
               sub rsp, 80
 
+              mov r10d, [rdi]
+              mov [rbp - 64], r10           ; srcW
+              mov r10d, [rdi + 4]
+              mov [rbp - 72], r10           ; srcH
+
+              add rdi, 8                    ; start of pixel data
+
               mov [rbp - 8], rdi            ; src
-              mov [rbp - 16], rsi           ; srcW
-              mov [rbp - 24], rdx           ; srcH
-              mov [rbp - 32], rcx           ; dstX
-              mov [rbp - 40], r8            ; dstY
-              mov [rbp - 48], r9            ; srcX
+              mov [rbp - 16], rsi           ; dstX
+              mov [rbp - 24], rdx           ; dstY
+              mov [rbp - 32], rcx           ; srcX
+              mov [rbp - 40], r8            ; srcY
+              mov [rbp - 48], r9            ; w
               mov r10, [rbp + 16]
-              mov [rbp - 56], r10           ; srcY
-              mov r10, [rbp + 24]
-              mov [rbp - 64], r10           ; w
-              mov r10, [rbp + 32]
-              mov [rbp - 72], r10           ; h
+              mov [rbp - 56], r10           ; h
 
               push r12
               push r13
@@ -139,14 +152,14 @@ drw_draw:
               ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx + col)
 
               mov r8, r13
-              add r8, [rbp - 56]            ; row + srcY
-              imul r8, [rbp - 16]           ; srcW * (row + srcY)
-              add r8, [rbp - 48]            ; srcW * (row + srcY) + srcX
+              add r8, [rbp - 40]            ; row + srcY
+              imul r8, [rbp - 64]           ; srcW * (row + srcY)
+              add r8, [rbp - 32]            ; srcW * (row + srcY) + srcX
 
               mov r9, r13
-              add r9, [rbp - 40]            ; row + dstY
+              add r9, [rbp - 24]            ; row + dstY
               imul r9d, [drw_fb_w]          ; drw_fb_w * (row + dstY)
-              add r9, [rbp - 32]            ; drw_fb_w * (row + dstY) + dstX
+              add r9, [rbp - 16]            ; drw_fb_w * (row + dstY) + dstX
 
               xor r14, r14                  ; col
 .loop_col:
@@ -175,11 +188,11 @@ drw_draw:
 .skip:
 
               inc r14
-              cmp r14, [rbp - 64]
+              cmp r14, [rbp - 48]
               jl .loop_col
 
               inc r13
-              cmp r13, [rbp - 72]
+              cmp r13, [rbp - 56]
               jl .loop_row
 
               pop r15
