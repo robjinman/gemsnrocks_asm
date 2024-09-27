@@ -497,6 +497,40 @@ grid_insert_world:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_grid_x:
+; rdi object
+;
+; Returns
+; rax gridX
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, [rdi + OBJ_OFFSET_X]
+              add r8, CELL_SZ / 2
+
+              mov rax, r8
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8                        ; gridX
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_grid_y:
+; rdi object
+;
+; Returns
+; rax gridY
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, [rdi + OBJ_OFFSET_Y]
+              add r8, CELL_SZ / 2
+
+              mov rax, r8
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8                        ; gridY
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_update:
 ; rdi object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -707,7 +741,8 @@ render_scene:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 push_exit:
-; rdi direction
+; rdi object
+; rsi direction
 ;
 ; Returns
 ; rax block player = 1, allow player = 0
@@ -719,31 +754,79 @@ push_exit:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 push_gem:
-; rdi direction
+; rdi object
+; rsi direction
 ;
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               ; TODO
-              mov rax, 1
+              mov rax, 0
 
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 push_rock:
-; rdi direction
+; rdi object
+; rsi direction
 ;
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
+              push rbp
+              mov rbp, rsp
+              sub rsp, 16
+
+              push r12
+              push r13
+              push r14
+              push r15
+
+              mov [rbp - 8], rdi            ; object
+              mov [rbp - 16], rsi           ; direction
+
+              call obj_grid_x
+              mov r8, rax
+              push r8
+              mov rdi, [rbp - 8]            ; object
+              call obj_grid_y
+              mov r9, rax                   ; gridY
+              pop r8                        ; gridX
+
+              lea r14, [rel unit_vecs]
+              mov r11, [rbp - 16]           ; direction
+              shl r11, 3
+              add r14, r11
+              movsx r12, dword [r14]        ; dx
+              movsx r13, dword [r14 + 4]    ; dy
+
+              mov rdi, r8
+              add rdi, r12                  ; gridX + dx
+              mov rsi, r13
+              add rsi, r9                   ; gridY + dy
+              call grid_at
+
+              cmp rax, 0
+              je .end
+
+              ; TODO: Move rock if space free
               mov rax, 1
+
+.end:
+              pop r15
+              pop r14
+              pop r13
+              pop r12
+
+              mov rsp, rbp
+              pop rbp
 
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 push_soil:
-; rdi direction
+; rdi object
+; rsi direction
 ;
 ; Returns
 ; rax block player = 1, allow player = 0
@@ -755,7 +838,8 @@ push_soil:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 push_wall:
-; rdi direction
+; rdi object
+; rsi direction
 ;
 ; Returns
 ; rax block player = 1, allow player = 0
@@ -776,7 +860,6 @@ obj_push:
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov r8, [rdi + OBJ_OFFSET_TYPE]
-              mov rdi, rsi
 
               cmp r8, OBJ_TYPE_EXIT
               je .type_exit
@@ -811,14 +894,8 @@ grid_player_x:
 ; Returns
 ; rax gridX
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r10, [player]
-              mov r8, [r10 + OBJ_OFFSET_X]
-              add r8, CELL_SZ / 2
-
-              mov rax, r8
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8                        ; gridX
+              mov rdi, [player]
+              call obj_grid_x
 
               ret
 
@@ -827,14 +904,8 @@ grid_player_y:
 ; Returns
 ; rax gridY
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r10, [player]
-              mov r8, [r10 + OBJ_OFFSET_Y]
-              add r8, CELL_SZ / 2
-
-              mov rax, r8
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8                        ; gridY
+              mov rdi, [player]
+              call obj_grid_y
 
               ret
 
@@ -863,6 +934,8 @@ grid_push_obj:
               pop rdi
               mov r11, rdi                  ; direction
 
+              push r11
+
               lea r14, [rel unit_vecs]
               shl r11, 3
               add r14, r11
@@ -877,10 +950,13 @@ grid_push_obj:
               mov rsi, r9
               call grid_at
 
+              pop r11                       ; direction
+
               cmp rax, 0
               je .skip
 
               mov rdi, rax
+              mov rsi, r11
               call obj_push
 .skip:
 
