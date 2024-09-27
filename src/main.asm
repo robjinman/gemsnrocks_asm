@@ -10,7 +10,7 @@ goodbye       db 'Good bye!', 10
 img_plyr_path db './data/player.bmp', 0
 img_soil_path db './data/soil.bmp', 0
 img_rock_path db './data/rock.bmp', 0
-img_gem_path db './data/gem.bmp', 0
+img_gem_path  db './data/gem.bmp', 0
 img_wall_path db './data/wall.bmp', 0
 img_exit_path db './data/exit.bmp', 0
 
@@ -290,6 +290,23 @@ grid_insert:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_at:
+; rdi gridX
+; rsi gridY
+;
+; Returns
+; rax object
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              imul rsi, GRID_W
+              add rsi, rdi
+              shl rsi, 3
+              lea r8, [rel grid]
+              add r8, rsi
+              mov rax, [r8]
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_insert_world:
 ; rdi worldX
 ; rsi worldY
@@ -390,6 +407,9 @@ construct_object:
 
               mov r11, rax                  ; pointer
 
+              mov rdi, [rbp - 8]            ; type
+              mov [r11 + OBJ_OFFSET_TYPE], rdi
+
               mov rdi, [rbp - 16]           ; gridX
               imul rdi, CELL_SZ             ; worldX
               mov [r11 + OBJ_OFFSET_X], rdi
@@ -487,16 +507,187 @@ render_scene:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+push_exit:
+; rdi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 1
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+push_gem:
+; rdi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 1
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+push_rock:
+; rdi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 1
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+push_soil:
+; rdi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 0
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+push_wall:
+; rdi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 1
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_push:
+; Push the object from the given direction
+;
+; rdi object
+; rsi direction
+;
+; Returns
+; rax block player = 1, allow player = 0
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, [rdi + OBJ_OFFSET_TYPE]
+              mov rdi, rsi
+
+              cmp r8, OBJ_TYPE_EXIT
+              je .type_exit
+              cmp r8, OBJ_TYPE_GEM
+              je .type_gem
+              cmp r8, OBJ_TYPE_ROCK
+              je .type_rock
+              cmp r8, OBJ_TYPE_SOIL
+              je .type_soil
+              cmp r8, OBJ_TYPE_WALL
+              je .type_wall
+.type_exit:
+              call push_exit
+              jmp .end
+.type_gem:
+              call push_gem
+              jmp .end
+.type_rock:
+              call push_rock
+              jmp .end
+.type_soil:
+              call push_soil
+              jmp .end
+.type_wall:
+              call push_wall
+              jmp .end
+.end:
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_player_x:
+; Returns
+; rax gridX
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r10, [player]
+              mov r8, [r10 + OBJ_OFFSET_X]
+              add r8, CELL_SZ / 2
+
+              mov rax, r8
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8                        ; gridX
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_player_y:
+; Returns
+; rax gridY
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r10, [player]
+              mov r8, [r10 + OBJ_OFFSET_Y]
+              add r8, CELL_SZ / 2
+
+              mov rax, r8
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8                        ; gridY
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_push_obj:
 ; Push the object from the given direction
 ;
 ; rdi direction
 ;
 ; Returns
-; rax block player = 0, allow player = 1
+; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
-              mov rax, 1
+              push r12
+              push r13
+              push r14
+              push rdi
+
+              call grid_player_x
+              mov r8, rax
+
+              push r8
+              call grid_player_y
+              mov r9, rax
+              pop r8
+
+              pop rdi
+              mov r11, rdi                  ; direction
+
+              lea r14, [rel unit_vecs]
+              shl r11, 3
+              add r14, r11
+              movsx r12, dword [r14]        ; dx
+              movsx r13, dword [r14 + 4]    ; dy
+
+              ; player grid coords + delta
+              add r8, r12
+              add r9, r13
+
+              mov rdi, r8
+              mov rsi, r9
+              call grid_at
+
+              cmp rax, 0
+              je .skip
+
+              mov rdi, rax
+              call obj_push
+.skip:
+
+              pop r14
+              pop r13
+              pop r12
 
               ret
 
@@ -508,7 +699,7 @@ plyr_move:
               mov rbp, rsp
               sub rsp, 16
 
-              mov [rbp - 8], rdi             ; direction
+              mov [rbp - 8], rdi            ; direction
 
               ; Check if player is currently moving
               mov r11, [player]
@@ -517,7 +708,7 @@ plyr_move:
               je .skip                      ; Exit function if player is moving
 
               call grid_push_obj
-              cmp rax, 0
+              cmp rax, 1
               je .skip                      ; Exit function if blocked by object
 
               lea r8, [rel unit_vecs]
