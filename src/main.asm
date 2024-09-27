@@ -1,5 +1,4 @@
-%define       CELL_W 64
-%define       CELL_H 64
+%define       CELL_SZ 64
 %define       GRID_W 100
 %define       GRID_H 80
 %define       BACKGROUND_COLOUR 0xFF112233
@@ -11,8 +10,19 @@ goodbye       db 'Good bye!', 10
 img_plyr_path db './data/player.bmp', 0
 img_soil_path db './data/soil.bmp', 0
 img_rock_path db './data/rock.bmp', 0
+img_gem_path db './data/gem.bmp', 0
 img_wall_path db './data/wall.bmp', 0
 img_exit_path db './data/exit.bmp', 0
+
+%define       DIR_UP 0
+%define       DIR_DOWN 1
+%define       DIR_RIGHT 2
+%define       DIR_LEFT 3
+
+unit_vecs     dd 0, -1                      ; up
+              dd 0, 1                       ; down
+              dd 1, 0                       ; right
+              dd -1, 0                      ; left
 
               SECTION .bss
 
@@ -30,8 +40,9 @@ img_exit_path db './data/exit.bmp', 0
 %define       OBJ_TYPE_PLYR 100
 %define       OBJ_TYPE_SOIL 101
 %define       OBJ_TYPE_ROCK 102
-%define       OBJ_TYPE_WALL 103
-%define       OBJ_TYPE_EXIT 104
+%define       OBJ_TYPE_GEM 103
+%define       OBJ_TYPE_WALL 104
+%define       OBJ_TYPE_EXIT 105
 
 %define       ANIM_NUM_FRAMES 8
 
@@ -45,23 +56,27 @@ stdin_flags   resq 1                        ; Original stdin flags
 ; First 8 bytes contains width and height
 %define       IMG_PLYR_W 512
 %define       IMG_PLYR_H 512
-img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_W * 4
+img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_H * 4
 
 %define       IMG_SOIL_W 512
 %define       IMG_SOIL_H 64
-img_soil      resb 8 + IMG_SOIL_W * IMG_SOIL_W * 4
+img_soil      resb 8 + IMG_SOIL_W * IMG_SOIL_H * 4
 
 %define       IMG_ROCK_W 512
 %define       IMG_ROCK_H 256
-img_rock      resb 8 + IMG_ROCK_W * IMG_ROCK_W * 4
+img_rock      resb 8 + IMG_ROCK_W * IMG_ROCK_H * 4
+
+%define       IMG_GEM_W 512
+%define       IMG_GEM_H 256
+img_gem       resb 8 + IMG_GEM_W * IMG_GEM_H * 4
 
 %define       IMG_WALL_W 512
 %define       IMG_WALL_H 64
-img_wall      resb 8 + IMG_WALL_W * IMG_WALL_W * 4
+img_wall      resb 8 + IMG_WALL_W * IMG_WALL_H * 4
 
 %define       IMG_EXIT_W 512
 %define       IMG_EXIT_H 128
-img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_W * 4
+img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
 
               SECTION .text
 
@@ -138,6 +153,12 @@ load_images:
               mov rcx, IMG_ROCK_H
               call drw_load_bmp
 
+              lea rdi, [rel img_gem_path]
+              lea rsi, [rel img_gem]
+              mov rdx, IMG_GEM_W 
+              mov rcx, IMG_GEM_H
+              call drw_load_bmp
+
               lea rdi, [rel img_wall_path]
               lea rsi, [rel img_wall]
               mov rdx, IMG_WALL_W
@@ -166,6 +187,26 @@ construct_scene:
               mov rdx, 5
               lea rcx, [rel img_soil]
               call construct_object
+
+              mov rdi, OBJ_TYPE_ROCK
+              mov rsi, 12
+              mov rdx, 9
+              lea rcx, [rel img_rock]
+              call construct_object
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+construct_player:
+; rdi gridX
+; rsi gridY
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rdx, rsi
+              mov rsi, rdi
+              mov rdi, OBJ_TYPE_PLYR
+              lea rcx, [rel img_plyr]
+              call construct_object
+              mov [player], rax
 
               ret
 
@@ -254,15 +295,21 @@ grid_insert_world:
 ; rsi worldY
 ; rdx object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rdx
+
               mov rax, rdi
-              mov r8, CELL_W
+              mov r8, CELL_SZ
+              xor rdx, rdx
               div r8
               mov r9, rax                   ; gridX
 
               mov rax, rsi
-              mov r8, CELL_H
+              mov r8, CELL_SZ
+              xor rdx, rdx
               div r8
               mov r10, rax                  ; gridY
+
+              pop rdx
 
               mov rdi, r9
               mov rsi, r10
@@ -344,10 +391,10 @@ construct_object:
               mov r11, rax                  ; pointer
 
               mov rdi, [rbp - 16]           ; gridX
-              imul rdi, CELL_W              ; worldX
+              imul rdi, CELL_SZ             ; worldX
               mov [r11 + OBJ_OFFSET_X], rdi
               mov rdi, [rbp - 24]           ; gridY
-              imul rdi, CELL_H              ; worldY
+              imul rdi, CELL_SZ             ; worldY
               mov [r11 + OBJ_OFFSET_Y], rdi
 
               mov rdi, [rbp - 32]           ; image
@@ -387,20 +434,6 @@ obj_play_anim:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-construct_player:
-; rdi gridX
-; rsi gridY
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdx, rsi
-              mov rsi, rdi
-              mov rdi, OBJ_TYPE_PLYR
-              lea rcx, [rel img_plyr]
-              call construct_object
-              mov [player], rax
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_draw:
 ; rdi object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -410,11 +443,11 @@ obj_draw:
               mov rsi, [r11 + OBJ_OFFSET_X]
               mov rdx, [r11 + OBJ_OFFSET_Y]
               mov rcx, [r11 + OBJ_OFFSET_FRAME]
-              imul rcx, CELL_W              ; srcX
+              imul rcx, CELL_SZ             ; srcX
               mov r8, [r11 + OBJ_OFFSET_IMG_ROW]
-              imul r8, CELL_H               ; srcY
-              mov r9, CELL_W                ; w
-              mov r10, CELL_H               ; h
+              imul r8, CELL_SZ              ; srcY
+              mov r9, CELL_SZ               ; w
+              mov r10, CELL_SZ              ; h
               mov [rsp], r10
               call drw_draw
               add rsp, 32
@@ -454,6 +487,91 @@ render_scene:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_push_obj:
+; Push the object from the given direction
+;
+; rdi direction
+;
+; Returns
+; rax block player = 0, allow player = 1
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; TODO
+              mov rax, 1
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+plyr_move:
+; rdi direction
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
+              mov rbp, rsp
+              sub rsp, 16
+
+              mov [rbp - 8], rdi             ; direction
+
+              ; Check if player is currently moving
+              mov r11, [player]
+              mov r8, [r11 + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 1
+              je .skip                      ; Exit function if player is moving
+
+              call grid_push_obj
+              cmp rax, 0
+              je .skip                      ; Exit function if blocked by object
+
+              lea r8, [rel unit_vecs]
+              mov r11, [rbp - 8]            ; direction
+              shl r11, 3                    ; size of vector is 8 bytes
+              add r8, r11
+              movsx r9, dword [r8]          ; dx
+              movsx r10, dword [r8 + 4]     ; dy
+
+              push r9
+              push r10
+
+              ; Play animation
+              mov rdi, [player]
+              mov rsi, [rbp - 8]            ; Animation ID
+              mov rdx, r9                   ; dx
+              imul rdx, CELL_SZ / ANIM_NUM_FRAMES
+              mov rcx, r10                  ; dy
+              imul rcx, CELL_SZ / ANIM_NUM_FRAMES
+              call obj_play_anim
+
+              ; Erase player from grid
+              mov r8, [player]
+              mov rdi, [r8 + OBJ_OFFSET_X]
+              add rdi, CELL_SZ / 2
+              mov rsi, [r8 + OBJ_OFFSET_Y]
+              add rsi, CELL_SZ / 2
+              mov rdx, 0
+              call grid_insert_world
+
+              pop r10                       ; dy
+              pop r9                        ; dx
+
+              imul r9, CELL_SZ
+              imul r10, CELL_SZ
+
+              ; Re-insert player into grid
+              mov r8, [player]
+              mov rdi, [r8 + OBJ_OFFSET_X]
+              add rdi, CELL_SZ / 2
+              add rdi, r9
+              mov rsi, [r8 + OBJ_OFFSET_Y]
+              add rsi, CELL_SZ / 2
+              add rsi, r10
+              mov rdx, [player]
+              call grid_insert_world
+.skip:
+
+              mov rsp, rbp
+              pop rbp
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 keyboard:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               sub rsp, 16
@@ -477,32 +595,20 @@ keyboard:
               cmp byte [rsp + 2], 0x44
               je .key_left
 .key_up:
-              mov rdi, [player]
-              mov rsi, 0                    ; Animation ID
-              mov rdx, 0                        ; dx
-              mov rcx, 0-CELL_H/ANIM_NUM_FRAMES ; dy
-              call obj_play_anim
+              mov rdi, DIR_UP
+              call plyr_move
               jmp .no_input
 .key_down:
-              mov rdi, [player]
-              mov rsi, 1                    ; Animation ID
-              mov rdx, 0                        ; dx
-              mov rcx, CELL_H/ANIM_NUM_FRAMES   ; dy
-              call obj_play_anim
+              mov rdi, DIR_DOWN
+              call plyr_move
               jmp .no_input
 .key_right:
-              mov rdi, [player]
-              mov rsi, 2                    ; Animation ID
-              mov rdx, CELL_W/ANIM_NUM_FRAMES   ; dx
-              mov rcx, 0                        ; dy
-              call obj_play_anim
+              mov rdi, DIR_RIGHT
+              call plyr_move
               jmp .no_input
 .key_left:
-              mov rdi, [player]
-              mov rsi, 3                    ; Animation ID
-              mov rdx, 0-CELL_W/ANIM_NUM_FRAMES ; dx
-              mov rcx, 0                        ; dy
-              call obj_play_anim
+              mov rdi, DIR_LEFT
+              call plyr_move
               jmp .no_input
 .quit:
               add rsp, 16
