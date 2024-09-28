@@ -28,6 +28,8 @@ unit_vecs     dd 1, 0                       ; right
 camera_x      dd 0
 camera_y      dd 0
 
+player_score  dd 0
+
 %define       OBJ_TYPE_PLYR 0
 %define       OBJ_TYPE_SOIL 1
 %define       OBJ_TYPE_ROCK 2
@@ -447,20 +449,6 @@ initialise:
               syscall
 
               call drw_init
-
-              ; Zero pending_destr
-              ; TODO: Probably not necessary
-              xor rcx, rcx
-.loop:
-              mov r8, rcx
-              shl r8, 3
-              lea r9, [rel pending_destr]
-              add r9, r8
-              xor r10, r10
-              mov [r9], r10
-              inc rcx
-              cmp rcx, GRID_H * GRID_W
-              jl .loop
 
               ret
 
@@ -972,6 +960,8 @@ push_gem:
 
               pop rdi                       ; object
               call obj_erase
+
+              inc dword [player_score]
 
               mov rax, 0
 
@@ -1588,17 +1578,8 @@ delete_pending:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-_start:
+sleep:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              call initialise
-              call construct_scene
-
-              ; Game loop
-.loop:
-              call centre_cam
-              call render_scene
-
-              ; Sleep
               sub rsp, 16
               mov rdi, rsp
               mov r8, 0                     ; seconds
@@ -1610,18 +1591,26 @@ _start:
               syscall
               add rsp, 16
 
-              call physics
+              ret
 
-              ; Get keyboard input
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+_start:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              call initialise
+              call construct_scene
+
+              ; Game loop
+.loop:
+              call centre_cam
+              call render_scene
+              call sleep
+              call physics
               call keyboard
               cmp rax, -1
               je .exit
-
               call update_scene
               call delete_pending
-
               jmp .loop
-
 .exit:
               mov rax, 1                    ; sys_write
               mov rdi, 1                    ; stdout
