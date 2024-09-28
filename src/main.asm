@@ -1360,12 +1360,13 @@ _start:
               syscall
               add rsp, 16
 
+              call physics
+
               ; Get keyboard input
               call keyboard
               cmp rax, -1
               je .exit
 
-              call physics
               call update_scene
 
               jmp .loop
