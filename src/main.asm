@@ -14,15 +14,15 @@ img_gem_path  db './data/gem.bmp', 0
 img_wall_path db './data/wall.bmp', 0
 img_exit_path db './data/exit.bmp', 0
 
-%define       DIR_UP 0
-%define       DIR_DOWN 1
-%define       DIR_RIGHT 2
-%define       DIR_LEFT 3
+%define       DIR_RIGHT 0
+%define       DIR_LEFT 1
+%define       DIR_UP 2
+%define       DIR_DOWN 3
 
-unit_vecs     dd 0, -1                      ; up
-              dd 0, 1                       ; down
-              dd 1, 0                       ; right
+unit_vecs     dd 1, 0                       ; right
               dd -1, 0                      ; left
+              dd 0, -1                      ; up
+              dd 0, 1                       ; down
 
 ; Top-left corner of the screen in world space
 camera_x      dd 0
@@ -72,6 +72,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 
 %define       OBJ_FLAG_CAN_FALL 1
 %define       OBJ_FLAG_STACKABLE 2
+%define       OBJ_FLAG_ANIMATED 4
 
 %define       ANIM_NUM_FRAMES 8
 
@@ -284,7 +285,7 @@ construct_player:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_PLYR
               lea rcx, [rel img_plyr]
-              mov r8, OBJ_FLAG_STACKABLE
+              mov r8, OBJ_FLAG_STACKABLE | OBJ_FLAG_ANIMATED
               call construct_object
               mov [player], rax
 
@@ -299,7 +300,7 @@ construct_exit:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_EXIT
               lea rcx, [rel img_exit]
-              mov r8, OBJ_FLAG_STACKABLE
+              mov r8, OBJ_FLAG_STACKABLE | OBJ_FLAG_ANIMATED
               call construct_object
 
               ret
@@ -313,7 +314,7 @@ construct_gem:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_GEM
               lea rcx, [rel img_gem]
-              mov r8, OBJ_FLAG_CAN_FALL
+              mov r8, OBJ_FLAG_CAN_FALL | OBJ_FLAG_ANIMATED
               call construct_object
 
               ret
@@ -327,7 +328,7 @@ construct_rock:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_ROCK
               lea rcx, [rel img_rock]
-              mov r8, OBJ_FLAG_CAN_FALL
+              mov r8, OBJ_FLAG_CAN_FALL | OBJ_FLAG_ANIMATED
               call construct_object
 
               ret
@@ -341,7 +342,7 @@ construct_soil:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_SOIL
               lea rcx, [rel img_soil]
-              mov r8, OBJ_FLAG_STACKABLE
+              mov r8, OBJ_FLAG_STACKABLE | OBJ_FLAG_ANIMATED
               call construct_object
 
               ret
@@ -355,7 +356,7 @@ construct_wall:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_WALL
               lea rcx, [rel img_wall]
-              mov r8, OBJ_FLAG_STACKABLE
+              mov r8, OBJ_FLAG_STACKABLE | OBJ_FLAG_ANIMATED
               call construct_object
 
               ret
@@ -674,12 +675,45 @@ obj_play_anim:
 ; rdx dx
 ; rcx dy
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; Skip to end if there's already an animation playing
               mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
               cmp r8, 1
               je .end
+
+              ; Set animated flag
+              mov r9, [rdi + OBJ_OFFSET_FLAGS]
+              or r9, OBJ_FLAG_ANIMATED
+              mov [rdi + OBJ_OFFSET_FLAGS], r9
+
               mov r9, 1
               mov [rdi + OBJ_OFFSET_ANIM_ST], r9
               mov [rdi + OBJ_OFFSET_IMG_ROW], rsi
+              mov [rdi + OBJ_OFFSET_DX], rdx
+              mov [rdi + OBJ_OFFSET_DY], rcx
+.end:
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_play_transform:
+; rdi object
+; rsi animation ID (row of sprite sheet)
+; rdx dx
+; rcx dy
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; Skip to end if there's already an animation playing
+              mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 1
+              je .end
+
+              ; Unset animated flag
+              mov r9, [rdi + OBJ_OFFSET_FLAGS]
+              mov r10, OBJ_FLAG_ANIMATED
+              not r10
+              and r9, r10
+              mov [rdi + OBJ_OFFSET_FLAGS], r9
+
+              mov r9, 1
+              mov [rdi + OBJ_OFFSET_ANIM_ST], r9
               mov [rdi + OBJ_OFFSET_DX], rdx
               mov [rdi + OBJ_OFFSET_DY], rcx
 .end:
@@ -691,9 +725,13 @@ obj_draw:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
               push r12
+              push r13
 
               mov rbp, rsp
               sub rsp, 16
+
+              mov r13, [rdi + OBJ_OFFSET_FLAGS]
+              and r13, OBJ_FLAG_ANIMATED
 
               mov r11, rdi
               mov rdi, [r11 + OBJ_OFFSET_IMG]
@@ -703,8 +741,12 @@ obj_draw:
               mov rdx, [r11 + OBJ_OFFSET_Y]
               mov r12d, [camera_y]
               sub rdx, r12
+              xor rcx, rcx
+              cmp r13, 0
+              je .not_animated
               mov rcx, [r11 + OBJ_OFFSET_FRAME]
               imul rcx, CELL_SZ             ; srcX
+.not_animated:
               mov r8, [r11 + OBJ_OFFSET_IMG_ROW]
               imul r8, CELL_SZ              ; srcY
               mov r9, CELL_SZ               ; w
@@ -713,6 +755,7 @@ obj_draw:
               call drw_draw
 
               mov rsp, rbp
+              pop r13
               pop r12
               pop rbp
 
@@ -890,6 +933,7 @@ push_rock:
 
               mov rdi, [rbp - 8]
               mov rsi, [rbp - 16]
+              mov rdx, 1
               call obj_move
 
               mov rax, 0                    ; allow player movement
@@ -1056,6 +1100,7 @@ grid_push_obj:
 obj_move:
 ; rdi object
 ; rsi direction
+; rdx animate
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               ; Check if object is currently moving
               mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
@@ -1073,12 +1118,23 @@ obj_move:
               push r10
               push rdi
 
+              cmp rdx, 0
+              je .no_animate
               ; Play animation
               mov rdx, r9                   ; dx
               imul rdx, CELL_SZ / ANIM_NUM_FRAMES
               mov rcx, r10                  ; dy
               imul rcx, CELL_SZ / ANIM_NUM_FRAMES
               call obj_play_anim
+              jmp .endif
+.no_animate:
+              ; Play transformation
+              mov rdx, r9                   ; dx
+              imul rdx, CELL_SZ / ANIM_NUM_FRAMES
+              mov rcx, r10                  ; dy
+              imul rcx, CELL_SZ / ANIM_NUM_FRAMES
+              call obj_play_transform
+.endif:
 
               pop r8                        ; object
               push r8
@@ -1131,6 +1187,7 @@ plyr_move:
 
               mov rdi, [player]
               mov rsi, r8
+              mov rdx, 1
               call obj_move
 .end:
 
@@ -1141,6 +1198,7 @@ obj_fall:
 ; rdi object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov rsi, DIR_DOWN
+              mov rdx, 0
               call obj_move
 
               ret
@@ -1275,6 +1333,7 @@ obj_try_fall_sideways:
 
               mov rdi, [rbp - 8]            ; object
               mov rsi, DIR_LEFT
+              mov rdx, 1
               call obj_move
               jmp .moved
 .try_fall_right:
@@ -1287,6 +1346,7 @@ obj_try_fall_sideways:
 
               mov rdi, [rbp - 8]
               mov rsi, DIR_RIGHT
+              mov rdx, 1
               call obj_move
 .moved:
               mov rax, 1
