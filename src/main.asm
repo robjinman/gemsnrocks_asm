@@ -84,7 +84,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 
               SECTION .bss
 
-%define       OBJ_SIZE 72
+%define       OBJ_SIZE 80
 %define       OBJ_OFFSET_TYPE 0
 %define       OBJ_OFFSET_X 8
 %define       OBJ_OFFSET_Y 16
@@ -94,6 +94,9 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 %define       OBJ_OFFSET_ANIM_ST 48         ; 1 = playing, 0 = paused
 %define       OBJ_OFFSET_DX 56
 %define       OBJ_OFFSET_DY 64
+%define       OBJ_OFFSET_FLAGS 72
+
+%define       OBJ_FLAG_CAN_FALL 1
 
 %define       ANIM_NUM_FRAMES 8
 
@@ -302,6 +305,7 @@ construct_player:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_PLYR
               lea rcx, [rel img_plyr]
+              mov r8, 0                     ; flags
               call construct_object
               mov [player], rax
 
@@ -316,6 +320,7 @@ construct_exit:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_EXIT
               lea rcx, [rel img_exit]
+              mov r8, 0                     ; flags
               call construct_object
 
               ret
@@ -329,6 +334,7 @@ construct_gem:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_GEM
               lea rcx, [rel img_gem]
+              mov r8, OBJ_FLAG_CAN_FALL
               call construct_object
 
               ret
@@ -342,6 +348,7 @@ construct_rock:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_ROCK
               lea rcx, [rel img_rock]
+              mov r8, OBJ_FLAG_CAN_FALL
               call construct_object
 
               ret
@@ -355,6 +362,7 @@ construct_soil:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_SOIL
               lea rcx, [rel img_soil]
+              mov r8, 0                     ; flags
               call construct_object
 
               ret
@@ -368,6 +376,7 @@ construct_wall:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_WALL
               lea rcx, [rel img_wall]
+              mov r8, 0                     ; flags
               call construct_object
 
               ret
@@ -588,15 +597,17 @@ construct_object:
 ; rsi gridX
 ; rdx gridY
 ; rcx image
+; r8  flags
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
               mov rbp, rsp
-              sub rsp, 48
+              sub rsp, 56
 
               mov [rbp - 8], rdi            ; type
               mov [rbp - 16], rsi           ; gridX
               mov [rbp - 24], rdx           ; gridY
               mov [rbp - 32], rcx           ; image
+              mov [rbp - 48], r8            ; flags
 
               mov rdi, OBJ_SIZE
               call util_alloc
@@ -620,6 +631,8 @@ construct_object:
               mov [r11 + OBJ_OFFSET_IMG_ROW], rdi
               mov [r11 + OBJ_OFFSET_FRAME], rdi
               mov [r11 + OBJ_OFFSET_ANIM_ST], rdi
+              mov rdi, [rbp - 48]           ; flags
+              mov [r11 + OBJ_OFFSET_FLAGS], rdi
 
               mov rdi, [rbp - 16]           ; gridX
               mov rsi, [rbp - 24]           ; gridY
@@ -978,7 +991,10 @@ obj_move:
 ; rdi object
 ; rsi direction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              call obj_grid_x
+              ; Check if object is currently moving
+              mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 1
+              je .end                       ; exit function if object is moving
 
               lea r8, [rel unit_vecs]
               mov r11, rsi                  ; direction
@@ -1016,7 +1032,7 @@ obj_move:
               imul r9, CELL_SZ
               imul r10, CELL_SZ
 
-              ; Re-insert player into grid
+              ; Re-insert object into grid
               mov rdi, [r8 + OBJ_OFFSET_X]
               add rdi, CELL_SZ / 2
               add rdi, r9
@@ -1026,35 +1042,96 @@ obj_move:
               mov rdx, r8
               call grid_insert_world
 
+.end:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 plyr_move:
 ; rdi direction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push rbp
-              mov rbp, rsp
-              sub rsp, 16
-
-              mov [rbp - 8], rdi            ; direction
-
-              ; Check if player is currently moving
-              mov r11, [player]
-              mov r8, [r11 + OBJ_OFFSET_ANIM_ST]
-              cmp r8, 1
-              je .skip                      ; Exit function if player is moving
+              mov r8, rdi
+              push r8
 
               call grid_push_obj
+              pop r8
               cmp rax, 1
-              je .skip                      ; Exit function if blocked by object
+              je .skip                      ; exit function if blocked by object
 
               mov rdi, [player]
-              mov rsi, [rbp - 8]
+              mov rsi, r8
               call obj_move
 .skip:
 
-              mov rsp, rbp
-              pop rbp
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_fall:
+; rdi object
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rsi, DIR_DOWN
+              call obj_move
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+physics:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea r11, [rel grid]
+
+              mov r8, 0                     ; row
+.loop_row:
+              mov r9, 0                     ; col
+.loop_col:
+              mov r10, r8
+              imul r10, GRID_W
+              add r10, r9
+              shl r10, 3
+              add r10, r11                  ; pointer to object pointer
+
+              mov rdi, [r10]                ; object
+              cmp rdi, 0
+              je .skip                      ; skip if null
+
+              mov rcx, [rdi + OBJ_OFFSET_FLAGS]
+              and rcx, OBJ_FLAG_CAN_FALL
+              cmp rcx, 0
+              je .skip                      ; skip non-fallable objects
+
+              push rdi
+              push r8
+              push r9
+              push r11
+
+              ; Get the object below this one
+              mov rdi, r9
+              mov rsi, r8
+              inc rsi
+              call grid_at
+
+              pop r11
+              pop r9
+              pop r8
+              pop rdi
+
+              cmp rax, 0
+              jne .skip                     ; if there's an object below this one
+
+              push r8
+              push r9
+              push r11
+              call obj_fall
+              pop r11
+              pop r9
+              pop r8
+.skip:
+
+              inc r9
+              cmp r9, GRID_W
+              jl .loop_col
+
+              inc r8
+              cmp r8, GRID_H - 1
+              jl .loop_row
 
               ret
 
@@ -1133,6 +1210,7 @@ _start:
               cmp rax, -1
               je .exit
 
+              call physics
               call update_scene
 
               jmp .loop
