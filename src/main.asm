@@ -807,12 +807,19 @@ push_rock:
               call grid_at
 
               cmp rax, 0
-              je .end
+              jne .block_player
 
-              ; TODO: Move rock if space free
-              mov rax, 1
+              mov rdi, [rbp - 8]
+              mov rsi, [rbp - 16]
+              call obj_move
 
+              mov rax, 0                    ; allow player movement
+              jmp .end
+
+.block_player:
+              mov rax, 1                    ; block player movement
 .end:
+
               pop r15
               pop r14
               pop r13
@@ -967,6 +974,61 @@ grid_push_obj:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_move:
+; rdi object
+; rsi direction
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              call obj_grid_x
+
+              lea r8, [rel unit_vecs]
+              mov r11, rsi                  ; direction
+              shl r11, 3                    ; size of vector is 8 bytes
+              add r8, r11
+              movsx r9, dword [r8]          ; dx
+              movsx r10, dword [r8 + 4]     ; dy
+
+              push r9
+              push r10
+              push rdi
+
+              ; Play animation
+              mov rdx, r9                   ; dx
+              imul rdx, CELL_SZ / ANIM_NUM_FRAMES
+              mov rcx, r10                  ; dy
+              imul rcx, CELL_SZ / ANIM_NUM_FRAMES
+              call obj_play_anim
+
+              pop r8                        ; object
+              push r8
+
+              ; Erase object from grid
+              mov rdi, [r8 + OBJ_OFFSET_X]
+              add rdi, CELL_SZ / 2
+              mov rsi, [r8 + OBJ_OFFSET_Y]
+              add rsi, CELL_SZ / 2
+              mov rdx, 0
+              call grid_insert_world
+
+              pop r8                        ; object
+              pop r10                       ; dy
+              pop r9                        ; dx
+
+              imul r9, CELL_SZ
+              imul r10, CELL_SZ
+
+              ; Re-insert player into grid
+              mov rdi, [r8 + OBJ_OFFSET_X]
+              add rdi, CELL_SZ / 2
+              add rdi, r9
+              mov rsi, [r8 + OBJ_OFFSET_Y]
+              add rsi, CELL_SZ / 2
+              add rsi, r10
+              mov rdx, r8
+              call grid_insert_world
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 plyr_move:
 ; rdi direction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -986,50 +1048,9 @@ plyr_move:
               cmp rax, 1
               je .skip                      ; Exit function if blocked by object
 
-              lea r8, [rel unit_vecs]
-              mov r11, [rbp - 8]            ; direction
-              shl r11, 3                    ; size of vector is 8 bytes
-              add r8, r11
-              movsx r9, dword [r8]          ; dx
-              movsx r10, dword [r8 + 4]     ; dy
-
-              push r9
-              push r10
-
-              ; Play animation
               mov rdi, [player]
-              mov rsi, [rbp - 8]            ; Animation ID
-              mov rdx, r9                   ; dx
-              imul rdx, CELL_SZ / ANIM_NUM_FRAMES
-              mov rcx, r10                  ; dy
-              imul rcx, CELL_SZ / ANIM_NUM_FRAMES
-              call obj_play_anim
-
-              ; Erase player from grid
-              mov r8, [player]
-              mov rdi, [r8 + OBJ_OFFSET_X]
-              add rdi, CELL_SZ / 2
-              mov rsi, [r8 + OBJ_OFFSET_Y]
-              add rsi, CELL_SZ / 2
-              mov rdx, 0
-              call grid_insert_world
-
-              pop r10                       ; dy
-              pop r9                        ; dx
-
-              imul r9, CELL_SZ
-              imul r10, CELL_SZ
-
-              ; Re-insert player into grid
-              mov r8, [player]
-              mov rdi, [r8 + OBJ_OFFSET_X]
-              add rdi, CELL_SZ / 2
-              add rdi, r9
-              mov rsi, [r8 + OBJ_OFFSET_Y]
-              add rsi, CELL_SZ / 2
-              add rsi, r10
-              mov rdx, [player]
-              call grid_insert_world
+              mov rsi, [rbp - 8]
+              call obj_move
 .skip:
 
               mov rsp, rbp
