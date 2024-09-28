@@ -1,7 +1,9 @@
 %define       CELL_SZ 64
 %define       GRID_W 40
 %define       GRID_H 20
-%define       BACKGROUND_COLOUR 0xFF112233
+%define       HUD_H 64
+%define       BACKGROUND_COLOUR 0xFF332211
+%define       HUD_COLOUR 0xFF222233
 
               SECTION .data
 
@@ -392,6 +394,7 @@ centre_cam:
               pop rsi                       ; playerY
 
               mov r8d, [drw_fb_h]
+              sub r8, HUD_H
               shr r8, 1
               sub rsi, r8                   ; playerY - fb_h / 2
 
@@ -402,6 +405,7 @@ centre_cam:
               mov rsi, GRID_H
               imul rsi, CELL_SZ
               sub esi, [drw_fb_h]
+              add rsi, HUD_H
               call min
 
               mov [camera_y], eax           ; min(GRID_H * CELL_SZ - fb_h, max(0, playerY - fb_h / 2))
@@ -799,6 +803,7 @@ obj_draw:
               mov rdx, [r11 + OBJ_OFFSET_Y]
               mov r12d, [camera_y]
               sub rdx, r12
+              add rdx, HUD_H
               xor rcx, rcx
               cmp r13, 0
               je .not_animated
@@ -820,12 +825,8 @@ obj_draw:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-render_scene:
+clear_screen:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push rbp
-              mov rbp, rsp
-              sub rsp, 16
-
               mov rdi, 0
               mov rsi, 0
               mov edx, [drw_fb_w]
@@ -833,10 +834,32 @@ render_scene:
               mov r8, BACKGROUND_COLOUR
               call drw_fill
 
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_hud:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rdi, 0
+              mov rsi, 0
+              mov edx, [drw_fb_w]
+              mov rcx, CELL_SZ
+              mov r8, HUD_COLOUR
+              call drw_fill
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_scene:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
               push r12
               push r13
               push r14
               push r15
+              mov rbp, rsp
+              sub rsp, 16
+
+              call clear_screen
 
               mov r14, CELL_SZ
 
@@ -852,6 +875,7 @@ render_scene:
               mov [rbp - 8], rax            ; xMax
 
               mov eax, [drw_fb_h]
+              sub rax, HUD_H
               add eax, [camera_y]
               xor rdx, rdx
               div r14
@@ -918,14 +942,14 @@ render_scene:
               cmp r8, [rbp - 16]
               jl .loop_row
 
+              call render_hud
               call drw_flush
 
+              mov rsp, rbp
               pop r15
               pop r14
               pop r13
               pop r12
-
-              mov rsp, rbp
               pop rbp
 
               ret
