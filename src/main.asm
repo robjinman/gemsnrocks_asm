@@ -97,6 +97,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 %define       OBJ_OFFSET_FLAGS 72
 
 %define       OBJ_FLAG_CAN_FALL 1
+%define       OBJ_FLAG_STACKABLE 2
 
 %define       ANIM_NUM_FRAMES 8
 
@@ -185,6 +186,8 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
 
 ; Stack should be 16-byte aligned before calling a function.
 ; TODO: Always push at least 8 bytes before every call?
+
+; TODO: Some cmp instructions might be unnecessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 load_images:
@@ -305,7 +308,7 @@ construct_player:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_PLYR
               lea rcx, [rel img_plyr]
-              mov r8, 0                     ; flags
+              mov r8, OBJ_FLAG_STACKABLE
               call construct_object
               mov [player], rax
 
@@ -320,7 +323,7 @@ construct_exit:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_EXIT
               lea rcx, [rel img_exit]
-              mov r8, 0                     ; flags
+              mov r8, OBJ_FLAG_STACKABLE
               call construct_object
 
               ret
@@ -362,7 +365,7 @@ construct_soil:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_SOIL
               lea rcx, [rel img_soil]
-              mov r8, 0                     ; flags
+              mov r8, OBJ_FLAG_STACKABLE
               call construct_object
 
               ret
@@ -376,7 +379,7 @@ construct_wall:
               mov rsi, rdi
               mov rdi, OBJ_TYPE_WALL
               lea rcx, [rel img_wall]
-              mov r8, 0                     ; flags
+              mov r8, OBJ_FLAG_STACKABLE
               call construct_object
 
               ret
@@ -1074,6 +1077,160 @@ obj_fall:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_try_fall:
+; rdi object
+; rsi gridX
+; rdx gridY
+;
+; Returns
+; rax 0 = didn't fall, 1 = did fall
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rcx, [rdi + OBJ_OFFSET_FLAGS]
+              and rcx, OBJ_FLAG_CAN_FALL
+              cmp rcx, 0
+              je .end                       ; skip non-fallable objects
+
+              mov r8, rsi                   ; gridX
+              mov r9, rdx                   ; gridY
+
+              push rdi                      ; object
+
+              ; Get the object below this one
+              mov rdi, r8
+              mov rsi, r9
+              inc rsi
+              call grid_at
+
+              pop rdi                       ; object
+
+              cmp rax, 0
+              jne .end                      ; if there's an object below this one
+
+              call obj_fall
+              mov rax, 1
+              ret
+.end:
+              mov rax, 0
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_space_to_fall_sideways:
+; rdi gridX
+; rsi gridY
+; rdx direction
+;
+; Returns
+; rax 0 = false, 1 = true
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea r8, [rel unit_vecs]
+              mov r11, rdx                  ; direction
+              shl r11, 3
+              add r8, r11
+              movsx r10, dword [r8]         ; dx
+
+              mov r8, rdi                   ; gridX
+              mov r9, rsi                   ; gridY
+              push r8
+              push r9
+              push r10
+
+              add rdi, r10
+              call grid_at
+              mov rdx, rax                  ; adjacent cell object
+
+              pop r10                       ; dx
+              pop r9                        ; gridY
+              pop r8                        ; gridX
+
+              push rdx                      ; adjacent cell object
+
+              mov rdi, r8
+              add rdi, r10
+              mov rsi, r9
+              inc rsi
+              call grid_at
+
+              pop rdx                       ; adjacent cell object
+              or rax, rdx
+              cmp rax, 0                    ; if both down-adjacent and adjacent cells are empty
+              je .true
+
+              mov rax, 0
+              ret
+.true:
+              mov rax, 1
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_try_fall_sideways:
+; rdi object
+; rsi gridX
+; rdx gridY
+;
+; Returns
+; rax 0 = didn't fall, 1 = did fall
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
+              mov rbp, rsp
+              sub rsp, 32
+
+              mov [rbp - 8], rdi            ; object
+              mov [rbp - 16], rsi           ; gridX
+              mov [rbp - 24], rdx           ; gridY
+
+              mov rcx, [rdi + OBJ_OFFSET_FLAGS]
+              and rcx, OBJ_FLAG_CAN_FALL
+              cmp rcx, 0
+              je .no_move                   ; skip non-fallable objects
+
+              ; Get the object below this one
+              mov rdi, [rbp - 16]
+              mov rsi, [rbp - 24]
+              inc rsi
+              call grid_at
+
+              cmp rax, 0
+              je .no_move                   ; if there's no object below this one
+
+              mov r10, [rax + OBJ_OFFSET_FLAGS]
+              and r10, OBJ_FLAG_STACKABLE
+              cmp r10, 0
+              jne .no_move                  ; don't fall if the object below is stackable
+
+              mov rdi, [rbp - 16]           ; gridX
+              mov rsi, [rbp - 24]           ; gridY
+              mov rdx, DIR_LEFT
+              call grid_space_to_fall_sideways
+              cmp rax, 0
+              je .try_fall_right
+
+              mov rdi, [rbp - 8]            ; object
+              mov rsi, DIR_LEFT
+              call obj_move
+              jmp .moved
+.try_fall_right:
+              mov rdi, [rbp - 16]           ; gridX
+              mov rsi, [rbp - 24]           ; gridY
+              mov rdx, DIR_RIGHT
+              call grid_space_to_fall_sideways
+              cmp rax, 0
+              je .no_move
+
+              mov rdi, [rbp - 8]
+              mov rsi, DIR_RIGHT
+              call obj_move
+.moved:
+              mov rax, 1
+              jmp .end
+.no_move:
+              mov rax, 0
+.end:
+              mov rsp, rbp
+              pop rbp
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 physics:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               lea r11, [rel grid]
@@ -1092,39 +1249,28 @@ physics:
               cmp rdi, 0
               je .skip                      ; skip if null
 
-              mov rcx, [rdi + OBJ_OFFSET_FLAGS]
-              and rcx, OBJ_FLAG_CAN_FALL
-              cmp rcx, 0
-              je .skip                      ; skip non-fallable objects
-
-              push rdi
               push r8
               push r9
               push r11
-
-              ; Get the object below this one
-              mov rdi, r9
-              mov rsi, r8
-              inc rsi
-              call grid_at
-
+              mov rsi, r9
+              mov rdx, r8
+              call obj_try_fall
               pop r11
               pop r9
               pop r8
-              pop rdi
-
-              cmp rax, 0
-              jne .skip                     ; if there's an object below this one
+              cmp rax, 1
+              je .skip
 
               push r8
               push r9
               push r11
-              call obj_fall
+              mov rsi, r9
+              mov rdx, r8
+              call obj_try_fall_sideways
               pop r11
               pop r9
               pop r8
 .skip:
-
               inc r9
               cmp r9, GRID_W
               jl .loop_col
