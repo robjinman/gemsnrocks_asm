@@ -114,8 +114,8 @@ drw_draw:
 ; Copy pixels from src image to frame buffer
 ;
 ; rdi image
-; rsi dstX
-; rdx dstY
+; rsi dstX (screen space)
+; rdx dstY (screen space)
 ; rcx srcX
 ; r8  srcY
 ; r9  w
@@ -158,11 +158,22 @@ drw_draw:
 
               mov r9, r13
               add r9, [rbp - 24]            ; row + dstY
+              cmp r9, 0
+              jl .skip_row
+              cmp r9d, [drw_fb_h]
+              jge .skip_row
               imul r9d, [drw_fb_w]          ; drw_fb_w * (row + dstY)
               add r9, [rbp - 16]            ; drw_fb_w * (row + dstY) + dstX
 
               xor r14, r14                  ; col
 .loop_col:
+              mov r15, r14
+              add r15, [rbp - 16]
+              cmp r15, 0
+              jl .skip_col
+              cmp r15d, [drw_fb_w]
+              jge .skip_col
+
               mov r10, r8
               add r10, r14                  ; srcW * (row + srcY) + srcX + col
               shl r10, 2                    ; src offset
@@ -183,14 +194,13 @@ drw_draw:
               mov rax, r15
               mov rdx, 0xFF000000
               and rax, rdx
-              jz .skip
+              jz .skip_col
               mov [rsi], r15d               ; copy pixel
-.skip:
-
+.skip_col:
               inc r14
               cmp r14, [rbp - 48]
               jl .loop_col
-
+.skip_row:
               inc r13
               cmp r13, [rbp - 56]
               jl .loop_row

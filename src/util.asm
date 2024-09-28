@@ -1,6 +1,42 @@
               SECTION .text
 
               global util_alloc
+              global max
+              global min
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+max:
+; rdi a
+; rsi b
+;
+; Returns
+; rax greatest of a and b
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              cmp rdi, rsi
+              jg .a_is_larger
+
+              mov rax, rsi
+              ret
+.a_is_larger:
+              mov rax, rdi
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+min:
+; rdi a
+; rsi b
+;
+; Returns
+; rax lowest of a and b
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              cmp rdi, rsi
+              jl .a_is_less
+
+              mov rax, rsi
+              ret
+.a_is_less:
+              mov rax, rdi
+              ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 util_alloc:
