@@ -77,6 +77,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 %define       ANIM_NUM_FRAMES 8
 
 grid          resq GRID_W * GRID_H          ; Pointers to game objects
+pending_destr resq GRID_W * GRID_H
 player        resq 1
 
 termios_old   resb 60                       ; Original terminal settings
@@ -447,6 +448,20 @@ initialise:
 
               call drw_init
 
+              ; Zero pending_destr
+              ; TODO: Probably not necessary
+              xor rcx, rcx
+.loop:
+              mov r8, rcx
+              shl r8, 3
+              lea r9, [rel pending_destr]
+              add r9, r8
+              xor r10, r10
+              mov [r9], r10
+              inc rcx
+              cmp rcx, GRID_H * GRID_W
+              jl .loop
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -502,6 +517,47 @@ grid_at:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_erase:
+; rdi object
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rdx, rdi
+              mov rdi, [rdx + OBJ_OFFSET_X]
+              mov rsi, [rdx + OBJ_OFFSET_Y]
+
+              push rdx
+
+              mov rax, rdi
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8
+              mov r9, rax                   ; gridX
+
+              mov rax, rsi
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8
+              mov r10, rax                  ; gridY
+
+              pop rdx                       ; object
+
+              imul r10, GRID_W
+              add r10, r9
+              shl r10, 3                    ; offset
+
+              ; Erase from grid
+              lea r8, [rel grid]
+              add r8, r10
+              xor r11, r11
+              mov [r8], r11
+
+              ; Add to pending_destr
+              lea r8, [rel pending_destr]
+              add r8, r10
+              mov [r8], rdx
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_insert_world:
 ; rdi worldX
 ; rsi worldY
@@ -521,7 +577,7 @@ grid_insert_world:
               div r8
               mov r10, rax                  ; gridY
 
-              pop rdx
+              pop rdx                       ; object
 
               mov rdi, r9
               mov rsi, r10
@@ -597,18 +653,32 @@ update_scene:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               xor rcx, rcx
 .loop:
-              lea r9, [rel grid]
               mov r8, rcx
-              shl r8, 3
+              shl r8, 3                     ; offset
+
+              lea r9, [rel grid]
               add r9, r8
               mov rdi, [r9]
               cmp rdi, 0
-              je .skip
+              je .skip1
+
+              push rcx
+              push r8
+              call obj_update
+              pop r8
+              pop rcx
+.skip1:
+              lea r9, [rel pending_destr]
+              add r9, r8
+              mov rdi, [r9]
+              cmp rdi, 0
+              je .skip2
 
               push rcx
               call obj_update
               pop rcx
-.skip:
+.skip2:
+
               inc rcx
               cmp rcx, GRID_H * GRID_W
               jl .loop
@@ -805,6 +875,7 @@ render_scene:
               mov [rbp - 16], rax           ; yMax
 
               lea r11, [rel grid]
+              lea r15, [rel pending_destr]
 
               mov eax, [camera_y]
               xor rdx, rdx
@@ -820,12 +891,13 @@ render_scene:
               mov r10, r8
               imul r10, GRID_W
               add r10, r9
-              shl r10, 3
-              add r10, r11
+              shl r10, 3                    ; offset
 
-              mov rdi, [r10]
+              mov r12, r10
+              add r12, r11
+              mov rdi, [r12]
               cmp rdi, 0
-              je .skip
+              je .skip1
 
               push r8
               push r9
@@ -836,8 +908,20 @@ render_scene:
               pop r10
               pop r9
               pop r8
-.skip:
+.skip1:
+              add r10, r15
+              mov rdi, [r10]
+              cmp rdi, 0
+              je .skip2
 
+              push r8
+              push r9
+              push r11
+              call obj_draw
+              pop r11
+              pop r9
+              pop r8
+.skip2:
               inc r9
               cmp r9, [rbp - 8]
               jl .loop_col
@@ -879,7 +963,16 @@ push_gem:
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
+              push rdi
+
+              mov rsi, 0                    ; animation ID
+              mov rdx, 0                    ; dx
+              mov rcx, 0                    ; dy
+              call obj_play_anim
+
+              pop rdi                       ; object
+              call obj_erase
+
               mov rax, 0
 
               ret
@@ -961,7 +1054,16 @@ push_soil:
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
+              push rdi
+
+              mov rsi, 0                    ; animation ID
+              mov rdx, 0                    ; dx
+              mov rcx, 0                    ; dy
+              call obj_play_anim
+
+              pop rdi                       ; object
+              call obj_erase
+
               mov rax, 0
 
               ret
@@ -974,7 +1076,6 @@ push_wall:
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
               mov rax, 1
 
               ret
@@ -1459,6 +1560,34 @@ keyboard:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+delete_pending:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              xor rcx, rcx
+.loop:
+              lea r9, [rel pending_destr]
+              mov r8, rcx
+              shl r8, 3                     ; offset
+              mov r10, r9
+              add r10, r8
+              mov rdi, [r10]
+              cmp rdi, 0
+              je .skip
+
+              mov r11, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r11, 1
+              je .skip                      ; Skip if animation is still playing
+              ; Erase from pending_destr
+              add r8, r9
+              xor r11, r11
+              mov [r8], r11
+.skip:
+              inc rcx
+              cmp rcx, GRID_H * GRID_W
+              jl .loop
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
@@ -1489,6 +1618,7 @@ _start:
               je .exit
 
               call update_scene
+              call delete_pending
 
               jmp .loop
 
