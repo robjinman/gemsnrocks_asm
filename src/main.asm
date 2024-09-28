@@ -816,6 +816,9 @@ push_rock:
               movsx r12, dword [r14]        ; dx
               movsx r13, dword [r14 + 4]    ; dy
 
+              cmp r13, 0                    ; don't allow pushing vertically
+              jne .block_player
+
               mov rdi, r8
               add rdi, r12                  ; gridX + dx
               mov rsi, r13
@@ -1053,17 +1056,23 @@ plyr_move:
 ; rdi direction
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov r8, rdi
-              push r8
 
+              ; Check if player is currently moving
+              mov r9, [player]
+              mov r10, [r9 + OBJ_OFFSET_ANIM_ST]
+              cmp r10, 1
+              je .end                       ; exit function if object is moving
+
+              push r8
               call grid_push_obj
               pop r8
               cmp rax, 1
-              je .skip                      ; exit function if blocked by object
+              je .end                       ; exit function if blocked by object
 
               mov rdi, [player]
               mov rsi, r8
               call obj_move
-.skip:
+.end:
 
               ret
 
