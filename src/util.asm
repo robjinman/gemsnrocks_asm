@@ -1,11 +1,12 @@
               SECTION .text
 
               global util_alloc
-              global max
-              global min
+              global util_int_to_str
+              global util_max
+              global util_min
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-max:
+util_max:
 ; rdi a
 ; rsi b
 ;
@@ -22,7 +23,7 @@ max:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-min:
+util_min:
 ; rdi a
 ; rsi b
 ;
@@ -36,6 +37,26 @@ min:
               ret
 .a_is_less:
               mov rax, rdi
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+util_int_to_str:
+; Convert 2 digit number to string
+;
+; rdi integer
+; rsi buffer
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rax, rdi
+              xor rdx, rdx
+              mov r8, 10
+              div r8
+              add rax, '0'
+              mov [rsi], al
+              add rdx, '0'
+              mov [rsi + 1], dl
+              xor r8, r8
+              mov [rsi + 2], r8
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

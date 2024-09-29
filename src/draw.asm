@@ -1,5 +1,9 @@
               SECTION .data
 
+%define       FONT_CHAR_W 40
+%define       FONT_CHAR_H 64
+%define       SPACE_CHAR_CODE_PT 32
+
 drw_fb_path   db '/dev/fb0', 0
 drw_fbfd      dd 0
 drw_fb_w      dd 0
@@ -15,6 +19,7 @@ drw_buf       dq 0
               global drw_draw
               global drw_load_bmp
               global drw_fill
+              global drw_draw_text
               global drw_flush
 
               extern util_alloc
@@ -106,6 +111,62 @@ drw_load_bmp:
               syscall
               pop rcx
               pop r11
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drw_draw_text:
+; rdi text
+; rsi font image
+; rdx x
+; rcx y
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
+              mov rbp, rsp
+              push r12
+              push r13
+              sub rsp, 32
+
+              mov r13, rdi                  ; text
+              mov [rbp - 8], rsi            ; font image
+              mov [rbp - 16], rdx           ; x
+              mov [rbp - 24], rcx           ; y
+
+              xor r11, r11                  ; count
+.loop:
+              movzx r8, byte [r13]
+              cmp r8, 0
+              je .end
+
+              push r11                      ; count
+
+              mov rdi, [rbp - 8]
+              mov r10, r11
+              imul r10, FONT_CHAR_W
+              mov rsi, r10
+              add rsi, [rbp - 16]           ; dstX
+              mov rdx, [rbp - 24]           ; dstY
+              mov rcx, r8
+              sub rcx, SPACE_CHAR_CODE_PT
+              imul rcx, FONT_CHAR_W         ; srcX
+              mov r8, 0                     ; srcY
+              mov r9, FONT_CHAR_W           ; w
+              mov r12, FONT_CHAR_H
+              sub rsp, 16
+              mov [rsp], r12                ; h
+              call drw_draw
+              add rsp, 16
+
+              pop r11                       ; count
+
+              inc r13                       ; advance text pointer
+              inc r11                       ; advance counter
+              jmp .loop
+.end:
+              pop r12
+              pop r13
+              mov rsp, rbp
+              pop rbp
 
               ret
 

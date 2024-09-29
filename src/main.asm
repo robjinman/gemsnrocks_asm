@@ -7,8 +7,10 @@
 
               SECTION .data
 
-goodbye       db 'Good bye!', 10
+str_goodbye   db 'Good bye!', 10
+str_num_gems  db 'Gems remaining:', 0
 
+img_font_path db './data/font.bmp', 0
 img_plyr_path db './data/player.bmp', 0
 img_soil_path db './data/soil.bmp', 0
 img_rock_path db './data/rock.bmp', 0
@@ -30,7 +32,7 @@ unit_vecs     dd 1, 0                       ; right
 camera_x      dd 0
 camera_y      dd 0
 
-player_score  dd 0
+num_gems      dd 0
 
 %define       OBJ_TYPE_PLYR 0
 %define       OBJ_TYPE_SOIL 1
@@ -89,6 +91,10 @@ termios_new   resb 60                       ; Modified terminal settings
 stdin_flags   resq 1                        ; Original stdin flags
 
 ; First 8 bytes contains width and height
+%define       IMG_FONT_W 3640
+%define       IMG_FONT_H 64
+img_font      resb 8 + IMG_FONT_W * IMG_FONT_H * 4
+
 %define       IMG_PLYR_W 512
 %define       IMG_PLYR_H 512
 img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_H * 4
@@ -118,6 +124,7 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern drw_init
               extern drw_draw
               extern drw_fill
+              extern drw_draw_text
               extern drw_load_bmp
               extern drw_term
               extern drw_flush
@@ -125,8 +132,9 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern drw_fb_h
 
               extern util_alloc
-              extern min
-              extern max
+              extern util_min
+              extern util_max
+              extern util_int_to_str
 
               global _start
 
@@ -174,6 +182,12 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 load_images:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel img_font_path]
+              lea rsi, [rel img_font]
+              mov rdx, IMG_FONT_W
+              mov rcx, IMG_FONT_H
+              call drw_load_bmp
+
               lea rdi, [rel img_plyr_path]
               lea rsi, [rel img_plyr]
               mov rdx, IMG_PLYR_W
@@ -219,6 +233,9 @@ construct_scene:
 
               lea r10, [rel levels]
 
+              mov r8, 0
+              mov [num_gems], r8d
+
               xor r8, r8                    ; row
 .loop_row:
               xor r9, r9                    ; col
@@ -253,6 +270,7 @@ construct_scene:
               jmp .end
 .type_gem:
               call construct_gem
+              inc dword [num_gems]
               jmp .end
 .type_plyr:
               call construct_player
@@ -381,13 +399,13 @@ centre_cam:
               sub rdi, r8                   ; playerX - fb_w / 2
 
               mov rsi, 0
-              call max
+              call util_max
 
               mov rdi, rax                  ; max(0, playerX - fb_w / 2)
               mov rsi, GRID_W
               imul rsi, CELL_SZ
               sub esi, [drw_fb_w]
-              call min
+              call util_min
 
               mov [camera_x], eax           ; min(GRID_W * CELL_SZ - fb_w, max(0, playerX - fb_w / 2))
 
@@ -399,14 +417,14 @@ centre_cam:
               sub rsi, r8                   ; playerY - fb_h / 2
 
               mov rdi, 0
-              call max
+              call util_max
 
               mov rdi, rax                  ; max(0, playerY - fb_h / 2)
               mov rsi, GRID_H
               imul rsi, CELL_SZ
               sub esi, [drw_fb_h]
               add rsi, HUD_H
-              call min
+              call util_min
 
               mov [camera_y], eax           ; min(GRID_H * CELL_SZ - fb_h, max(0, playerY - fb_h / 2))
 
@@ -846,6 +864,23 @@ render_hud:
               mov r8, HUD_COLOUR
               call drw_fill
 
+              lea rdi, [rel str_num_gems]
+              lea rsi, [rel img_font]
+              mov rdx, 10
+              mov rcx, 0
+              call drw_draw_text
+
+              sub rsp, 16
+              mov edi, [num_gems]
+              mov rsi, rsp
+              call util_int_to_str
+              mov rdi, rsp
+              lea rsi, [rel img_font]
+              mov rdx, 640
+              mov rcx, 0
+              call drw_draw_text
+              add rsp, 16
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -985,7 +1020,7 @@ push_gem:
               pop rdi                       ; object
               call obj_erase
 
-              inc dword [player_score]
+              dec dword [num_gems]
 
               mov rax, 0
 
@@ -1638,7 +1673,7 @@ _start:
 .exit:
               mov rax, 1                    ; sys_write
               mov rdi, 1                    ; stdout
-              lea rsi, [rel goodbye]
+              lea rsi, [rel str_goodbye]
               mov rdx, 14
               syscall
 
