@@ -7,9 +7,12 @@
 
               SECTION .data
 
-str_goodbye   db 'Good bye!', 10
+str_goodbye   db "Thanks for playing Gems'n'Rocks", 10
 str_you_died  db 'You died!', 0
-str_prs_enter db 'Press enter to continue', 0
+str_success   db 'Success!', 0
+str_victory   db 'You are victorious!', 0
+str_ent_to_q  db 'Press enter to quit', 0
+str_continue  db 'Press enter to continue', 0
 str_num_gems  db 'Gems remaining:', 0
 
 img_font_path db './data/font.bmp', 0
@@ -26,6 +29,8 @@ img_exit_path db './data/exit.bmp', 0
 %define       DIR_DOWN 3
 
 %define       PLYR_ANIM_DEATH 4
+%define       PLYR_ANIM_WIN 5
+%define       EXIT_ANIM_OPEN 1
 
 unit_vecs     dd 1, 0                       ; right
               dd -1, 0                      ; left
@@ -40,7 +45,10 @@ camera_y      dd 0
 
 %define       GAME_ST_ALIVE 0
 %define       GAME_ST_DEAD 1
+%define       GAME_ST_SUCCESS 2
+%define       GAME_ST_VICTORIOUS 3
 
+level         dd 0
 num_gems      dd 0
 game_state    dd GAME_ST_ALIVE
 player_dir    dd -1
@@ -52,27 +60,6 @@ pending_move  dd -1
 %define       OBJ_TYPE_GEM 3
 %define       OBJ_TYPE_WALL 4
 %define       OBJ_TYPE_EXIT 5
-
-levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 0, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4
-              db 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 4
-              db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
 
               SECTION .bss
 
@@ -101,6 +88,7 @@ objects       resb OBJ_SIZE * GRID_W * GRID_H
 grid          resq GRID_W * GRID_H          ; Pointers to game objects
 pending_destr resq GRID_W * GRID_H
 player        resq 1
+exit          resq 1
 
 termios_old   resb 60                       ; Original terminal settings
 termios_new   resb 60                       ; Modified terminal settings
@@ -153,32 +141,11 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern util_print
               extern util_assert_fail
 
+              extern levels
+              extern num_levels
+
               global _start
 
-; Process memory layout
-;----------------------
-;
-;  Higher Addresses
-; |--------------|
-; | Stack        |  (Grows Downwards)
-; |--------------|
-; |              |  (Unavailable)
-; |              |
-; |--------------| <-- Program Break (Manipulated by sbrk)
-; | Heap         |  (Grows Upwards)
-; |              |
-; |              |
-; |              |
-; |--------------|
-; | BSS Segment  |  (Uninitialized Data)
-; |--------------|
-; | Data Segment |  (Initialized Data)
-; |--------------|
-; | Text Segment |  (Code)
-; |--------------|
-;  Lower Addresses
-;
-;
 ; Calling convention
 ; ------------------
 ;
@@ -190,11 +157,6 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
 ; The call instruction will then push the return address
 ; Functions shouldn't change: rbp, rbx, r12, r13, r14, r15
 ; Functions return integers in rax and floats in xmm0
-
-; Stack should be 16-byte aligned before calling a function.
-; TODO: Always push at least 8 bytes before every call?
-
-; TODO: Some cmp instructions might be unnecessary
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 load_images:
@@ -249,6 +211,9 @@ construct_scene:
               call load_images
 
               lea r10, [rel levels]
+              mov r8d, [level]
+              imul r8, GRID_W * GRID_H      ; level offset
+              add r10, r8
 
               mov r8, 0
               mov [num_gems], r8d
@@ -348,6 +313,7 @@ construct_exit:
               lea rcx, [rel img_exit]
               mov r8, OBJ_FLAG_STACKABLE | OBJ_FLAG_ANIMATED
               call construct_object
+              mov [exit], rax
 
               ret
 
@@ -679,6 +645,15 @@ update_scene:
               cmp rcx, GRID_H * GRID_W
               jl .loop
 
+              cmp [num_gems], dword 0
+              jne .end
+              mov rdi, [exit]
+              mov rsi, EXIT_ANIM_OPEN
+              mov rdx, 0
+              mov rcx, 0
+              call obj_play_anim
+.end:
+
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -931,10 +906,15 @@ render_hud:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-render_death_box:
+render_box:
+; rdi string 1
+; rsi string 2
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
               push r12
               push r13
+              mov rbp, rsp
+              sub rsp, 48
 
               mov r8d, [drw_fb_w]
               mov r9d, [drw_fb_h]
@@ -949,38 +929,67 @@ render_death_box:
               mov r13, r9
               shr r13, 1                    ; h
 
-              push r10
+              mov [rbp - 8], r10            ; x
+              mov [rbp - 16], r12           ; y
+              mov [rbp - 24], r11           ; w
+              mov [rbp - 32], r13           ; h
+              mov [rbp - 40], rdi           ; string 1
+              mov [rbp - 48], rsi           ; string 2
 
-              mov rdi, r10
-              mov rsi, r12
-              mov rdx, r11
-              mov rcx, r13
+              mov rdi, r10                  ; x
+              mov rsi, r12                  ; y
+              mov rdx, r11                  ; w
+              mov rcx, r13                  ; h
               mov r8, HUD_COLOUR
               call drw_fill
 
-              pop r10
-              push r10
-
-              lea rdi, [rel str_you_died]
+              mov rdi, [rbp - 40]           ; string 1
               lea rsi, [rel img_font]
-              mov rdx, r10
+              mov rdx, [rbp - 8]            ; x
               add rdx, 40
-              mov rcx, r12
+              mov rcx, [rbp - 16]           ; y
               add rcx, 40
               call drw_draw_text
 
-              pop r10
-
-              lea rdi, [rel str_prs_enter]
+              mov rdi, [rbp - 48]           ; string 2
               lea rsi, [rel img_font]
-              mov rdx, r10
+              mov rdx, [rbp - 8]            ; x
               add rdx, 40
-              mov rcx, r12
+              mov rcx, [rbp - 16]           ; y
               add rcx, 150
               call drw_draw_text
 
+              mov rsp, rbp
               pop r13
               pop r12
+              pop rbp
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_death_box:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel str_you_died]
+              lea rsi, [rel str_continue]
+              call render_box
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_success_box:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel str_success]
+              lea rsi, [rel str_continue]
+              call render_box
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_victorious_box:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel str_victory]
+              lea rsi, [rel str_ent_to_q]
+              call render_box
 
               ret
 
@@ -1082,8 +1091,18 @@ render_scene:
 
               cmp [game_state], dword GAME_ST_DEAD
               je .st_dead
+              cmp [game_state], dword GAME_ST_SUCCESS
+              je .st_success
+              cmp [game_state], dword GAME_ST_VICTORIOUS
+              je .st_victorious
               cmp [game_state], dword GAME_ST_ALIVE
               je .st_endif
+.st_success:
+              call render_success_box
+              jmp .st_endif
+.st_victorious:
+              call render_victorious_box
+              jmp .st_endif
 .st_dead:
               call render_death_box
 .st_endif:
@@ -1107,9 +1126,22 @@ push_exit:
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              ; TODO
-              mov rax, 1
+              cmp [num_gems], dword 0
+              jne .closed
 
+              mov r8, [level]
+              inc r8
+              cmp r8d, [num_levels]
+              jl .success
+              mov [game_state], dword GAME_ST_VICTORIOUS
+              jmp .endif
+.success:
+              mov [game_state], dword GAME_ST_SUCCESS
+.endif:
+              mov rax, 0
+              ret
+.closed:
+              mov rax, 1
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1455,6 +1487,17 @@ plyr_move:
               mov rsi, r8
               mov rdx, 1
               call obj_move
+
+              ; If the game state is SUCCESS or VICTORIOUS, we must have just pushed into the exit
+              cmp [game_state], dword GAME_ST_SUCCESS
+              je .level_complete
+              cmp [game_state], dword GAME_ST_VICTORIOUS
+              je .level_complete
+              jmp .success
+.level_complete:
+              mov rdi, [player]
+              mov rsi, PLYR_ANIM_WIN
+              call obj_queue_anim
               jmp .success
 .already_moving:
               mov rax, 1
@@ -1758,6 +1801,10 @@ keyboard:
               je .st_alive
               cmp [game_state], dword GAME_ST_DEAD
               je .st_dead
+              cmp [game_state], dword GAME_ST_SUCCESS
+              je .st_success
+              cmp [game_state], dword GAME_ST_VICTORIOUS
+              je .st_victorious
 .st_alive:
               cmp byte [r9], 0x1B          ; esc sequence
               jne .end
@@ -1771,13 +1818,17 @@ keyboard:
               je .key_right
               cmp byte [r9 + 2], 0x44
               je .key_left
+              jmp .end
 .st_dead:
+.st_success:
+.st_victorious:
               cmp byte [r9], 0x0A          ; new line
               je .restart
               cmp byte [r9], 0x1B          ; esc sequence
               jne .end
               cmp byte [r9 + 1], 0x5B      ; [ character
               jne .quit
+              jmp .end
 .key_up:
               mov rdi, DIR_UP
               jmp .arrow_key
@@ -1867,6 +1918,9 @@ _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
 
+              jmp .restart
+.next_level:
+              inc dword [level]
 .restart:
               call construct_scene
 
@@ -1874,6 +1928,10 @@ _start:
 .loop:
               cmp [game_state], dword GAME_ST_ALIVE
               je .st_alive
+              cmp [game_state], dword GAME_ST_SUCCESS
+              je .st_success
+              cmp [game_state], dword GAME_ST_VICTORIOUS
+              je .st_victorious
               cmp [game_state], dword GAME_ST_DEAD
               je .st_dead
 .st_alive:
@@ -1900,6 +1958,32 @@ _start:
               je .exit
               cmp rax, 2
               je .restart
+              call update_scene
+              call delete_pending
+              jmp .loop
+.st_success:
+              call centre_cam
+              call render_scene
+              call sleep
+              call physics
+              call keyboard
+              cmp rax, 1
+              je .exit
+              cmp rax, 2
+              je .next_level
+              call update_scene
+              call delete_pending
+              jmp .loop
+.st_victorious:
+              call centre_cam
+              call render_scene
+              call sleep
+              call physics
+              call keyboard
+              cmp rax, 1
+              je .exit
+              cmp rax, 2
+              je .exit
               call update_scene
               call delete_pending
               jmp .loop
