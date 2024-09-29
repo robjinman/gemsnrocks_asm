@@ -1,9 +1,15 @@
+              SECTION .data
+
+str_error     db 'Assertion failed!', 10
+
               SECTION .text
 
               global util_alloc
               global util_int_to_str
               global util_max
               global util_min
+              global util_print
+              global util_assert_fail
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 util_max:
@@ -56,6 +62,28 @@ util_int_to_str:
               mov [rsi + 1], dl
               xor r8, r8
               mov [rsi + 2], r8
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+util_print:
+; rdi string
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, rdi
+
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
+              mov rsi, r8
+              mov rdx, 14
+              syscall
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+util_assert_fail:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea rdi, [rel str_error]
+              call util_print
 
               ret
 

@@ -72,7 +72,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 
               SECTION .bss
 
-%define       OBJ_SIZE 80
+%define       OBJ_SIZE 96
 %define       OBJ_OFFSET_TYPE 0
 %define       OBJ_OFFSET_X 8
 %define       OBJ_OFFSET_Y 16
@@ -83,6 +83,8 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 %define       OBJ_OFFSET_DX 56
 %define       OBJ_OFFSET_DY 64
 %define       OBJ_OFFSET_FLAGS 72
+%define       OBJ_OFFSET_GRID_X 80
+%define       OBJ_OFFSET_GRID_Y 88
 
 %define       OBJ_FLAG_CAN_FALL 1
 %define       OBJ_FLAG_STACKABLE 2
@@ -143,6 +145,8 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern util_min
               extern util_max
               extern util_int_to_str
+              extern util_print
+              extern util_assert_fail
 
               global _start
 
@@ -513,12 +517,28 @@ grid_insert:
 ; rsi gridY
 ; rdx object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              imul rsi, GRID_W
-              add rsi, rdi
-              shl rsi, 3
+              mov r11, rsi
+              imul r11, GRID_W
+              add r11, rdi
+              shl r11, 3
               lea r8, [rel grid]
-              add r8, rsi
+              add r8, r11
               mov [r8], rdx
+
+              cmp rdx, 0
+              je .end
+              mov [rdx + OBJ_OFFSET_GRID_X], rdi
+              mov [rdx + OBJ_OFFSET_GRID_Y], rsi
+.end:
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_erase:
+; rdi gridX
+; rsi gridY
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rdx, 0
+              call grid_insert
 
               ret
 
@@ -530,144 +550,50 @@ grid_at:
 ; Returns
 ; rax object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              imul rsi, GRID_W
-              add rsi, rdi
-              shl rsi, 3
+              mov r11, rsi
+              imul r11, GRID_W
+              add r11, rdi
+              shl r11, 3
               lea r8, [rel grid]
-              add r8, rsi
+              add r8, r11
               mov rax, [r8]
 
-              ret
+              cmp rax, 0
+              je .ok
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-grid_at_world:
-; rdi worldX
-; rsi worldY
-;
-; Returns
-; rax object
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rax, rdi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r9, rax                   ; gridX
-
-              mov rax, rsi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r10, rax                  ; gridY
-
-              imul r10, GRID_W
-              add r10, r9
-              shl r10, 3
-              lea r8, [rel grid]
-              add r8, r10
-              mov rax, [r8]
-
+              ; Check the object really is at its grid coords
+              mov r8, [rax + OBJ_OFFSET_GRID_X]
+              mov r9, [rax + OBJ_OFFSET_GRID_Y]
+              cmp r8, rdi
+              jne .error
+              cmp r9, rsi
+              je .ok
+.error:
+              call util_assert_fail
+.ok:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_erase:
 ; rdi object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdx, rdi
-              mov rdi, [rdx + OBJ_OFFSET_X]
-              mov rsi, [rdx + OBJ_OFFSET_Y]
+              mov r8, [rdi + OBJ_OFFSET_GRID_X]
+              mov r9, [rdi + OBJ_OFFSET_GRID_Y]
 
-              push rdx
-
-              mov rax, rdi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r9, rax                   ; gridX
-
-              mov rax, rsi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r10, rax                  ; gridY
-
-              pop rdx                       ; object
-
-              imul r10, GRID_W
-              add r10, r9
-              shl r10, 3                    ; offset
+              imul r9, GRID_W
+              add r9, r8
+              shl r9, 3                     ; offset
 
               ; Erase from grid
               lea r8, [rel grid]
-              add r8, r10
+              add r8, r9
               xor r11, r11
               mov [r8], r11
 
               ; Add to pending_destr
               lea r8, [rel pending_destr]
-              add r8, r10
-              mov [r8], rdx
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-grid_insert_world:
-; rdi worldX
-; rsi worldY
-; rdx object
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              push rdx
-
-              mov rax, rdi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r9, rax                   ; gridX
-
-              mov rax, rsi
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8
-              mov r10, rax                  ; gridY
-
-              pop rdx                       ; object
-
-              mov rdi, r9
-              mov rsi, r10
-              call grid_insert
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-obj_grid_x:
-; rdi object
-;
-; Returns
-; rax gridX
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r8, [rdi + OBJ_OFFSET_X]
-              add r8, CELL_SZ / 2
-
-              mov rax, r8
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8                        ; gridX
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-obj_grid_y:
-; rdi object
-;
-; Returns
-; rax gridY
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r8, [rdi + OBJ_OFFSET_Y]
-              add r8, CELL_SZ / 2
-
-              mov rax, r8
-              mov r8, CELL_SZ
-              xor rdx, rdx
-              div r8                        ; gridY
+              add r8, r9
+              mov [r8], rdi
 
               ret
 
@@ -805,20 +731,20 @@ obj_is_falling:
 
               mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
               cmp r8, 0
-              je .false
+              je .skip
 
               mov r8, [rdi + OBJ_OFFSET_DY]
               cmp r8, 0
-              jle .false
+              jle .skip
 
               mov r8, [rdi + OBJ_OFFSET_FLAGS]
               and r8, OBJ_FLAG_ANIMATED
               cmp r8, 0
-              jne .false
+              jne .skip
 
               mov rax, 1
               ret
-.false:
+.skip:
               mov rax, 0
               ret
 
@@ -1183,13 +1109,8 @@ push_rock:
               mov [rbp - 8], rdi            ; object
               mov [rbp - 16], rsi           ; direction
 
-              call obj_grid_x
-              mov r8, rax
-              push r8
-              mov rdi, [rbp - 8]            ; object
-              call obj_grid_y
-              mov r9, rax                   ; gridY
-              pop r8                        ; gridX
+              mov r8, [rdi + OBJ_OFFSET_GRID_X]
+              mov r9, [rdi + OBJ_OFFSET_GRID_Y]
 
               lea r14, [rel unit_vecs]
               mov r11, [rbp - 16]           ; direction
@@ -1307,26 +1228,6 @@ obj_push:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-grid_player_x:
-; Returns
-; rax gridX
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdi, [player]
-              call obj_grid_x
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-grid_player_y:
-; Returns
-; rax gridY
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov rdi, [player]
-              call obj_grid_y
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_push_obj:
 ; Push the object from the given direction
 ;
@@ -1338,19 +1239,12 @@ grid_push_obj:
               push r12
               push r13
               push r14
-              push rdi
 
-              call grid_player_x
-              mov r8, rax
+              mov rax, [player]
+              mov r8, [rax + OBJ_OFFSET_GRID_X]
+              mov r9, [rax + OBJ_OFFSET_GRID_Y]
 
-              push r8
-              call grid_player_y
-              mov r9, rax
-              pop r8
-
-              pop rdi
               mov r11, rdi                  ; direction
-
               push r11
 
               lea r14, [rel unit_vecs]
@@ -1384,6 +1278,53 @@ grid_push_obj:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_move_obj:
+; rdi object
+; rsi direction
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
+              mov rbp, rsp
+              sub rsp, 32
+
+              mov r8, [rdi + OBJ_OFFSET_GRID_X]
+              mov r9, [rdi + OBJ_OFFSET_GRID_Y]
+
+              mov [rbp - 8], rdi            ; object
+              mov [rbp - 16], rsi           ; direction
+              mov [rbp - 24], r8            ; gridX
+              mov [rbp - 32], r9            ; gridY
+
+              mov rdi, r8
+              mov rsi, r9
+              call grid_at
+
+              ; Check the object really is at its grid coords
+              cmp rax, [rbp - 8]
+              je .ok
+              call util_assert_fail
+.ok:
+              mov rdi, [rbp - 24]
+              mov rsi, [rbp - 32]
+              call grid_erase
+
+              lea r8, [rel unit_vecs]
+              mov r11, [rbp - 16]           ; direction
+              shl r11, 3                    ; size of vector is 8 bytes
+              add r8, r11
+              movsx rdi, dword [r8]         ; dx
+              movsx rsi, dword [r8 + 4]     ; dy
+
+              add rdi, [rbp - 24]
+              add rsi, [rbp - 32]
+              mov rdx, [rbp - 8]
+              call grid_insert
+
+              mov rsp, rbp
+              pop rbp
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_move:
 ; rdi object
 ; rsi direction
@@ -1394,16 +1335,22 @@ obj_move:
               cmp r8, 1
               je .end                       ; exit function if object is moving
 
+              push rdi                      ; object
+              push rsi                      ; direction
+              push rdx                      ; animate
+
+              call grid_move_obj
+
+              pop rdx                       ; animate
+              pop rsi                       ; direction
+              pop rdi                       ; object
+
               lea r8, [rel unit_vecs]
               mov r11, rsi                  ; direction
               shl r11, 3                    ; size of vector is 8 bytes
               add r8, r11
               movsx r9, dword [r8]          ; dx
               movsx r10, dword [r8 + 4]     ; dy
-
-              push r9
-              push r10
-              push rdi
 
               cmp rdx, 0
               je .no_animate
@@ -1413,7 +1360,7 @@ obj_move:
               mov rcx, r10                  ; dy
               imul rcx, CELL_SZ / ANIM_NUM_FRAMES
               call obj_play_anim
-              jmp .endif
+              jmp .end
 .no_animate:
               ; Play transformation
               mov rdx, r9                   ; dx
@@ -1421,36 +1368,6 @@ obj_move:
               mov rcx, r10                  ; dy
               imul rcx, CELL_SZ / ANIM_NUM_FRAMES
               call obj_play_transform
-.endif:
-
-              pop r8                        ; object
-              push r8
-
-              ; Erase object from grid
-              mov rdi, [r8 + OBJ_OFFSET_X]
-              add rdi, CELL_SZ / 2
-              mov rsi, [r8 + OBJ_OFFSET_Y]
-              add rsi, CELL_SZ / 2
-              mov rdx, 0
-              call grid_insert_world
-
-              pop r8                        ; object
-              pop r10                       ; dy
-              pop r9                        ; dx
-
-              imul r9, CELL_SZ
-              imul r10, CELL_SZ
-
-              ; Re-insert object into grid
-              mov rdi, [r8 + OBJ_OFFSET_X]
-              add rdi, CELL_SZ / 2
-              add rdi, r9
-              mov rsi, [r8 + OBJ_OFFSET_Y]
-              add rsi, CELL_SZ / 2
-              add rsi, r10
-              mov rdx, r8
-              call grid_insert_world
-
 .end:
               ret
 
@@ -1700,13 +1617,11 @@ physics:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 death_condition:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              lea r11, [rel grid]
-
               mov r8, [player]
-              mov rdi, [r8 + OBJ_OFFSET_X]
-              mov rsi, [r8 + OBJ_OFFSET_Y]
-              sub rsi, CELL_SZ / 2
-              call grid_at_world
+              mov rdi, [r8 + OBJ_OFFSET_GRID_X]
+              mov rsi, [r8 + OBJ_OFFSET_GRID_Y]
+              dec rsi
+              call grid_at
               cmp rax, 0
               je .still_alive
 
@@ -1835,20 +1750,6 @@ sleep:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-print:
-; rdi string
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              mov r8, rdi
-
-              mov rax, 1                    ; sys_write
-              mov rdi, 1                    ; stdout
-              mov rsi, r8
-              mov rdx, 14
-              syscall
-
-              ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
@@ -1891,7 +1792,7 @@ _start:
               jmp .loop
 .exit:
               lea rdi, [rel str_goodbye]
-              call print
+              call util_print
 
               call terminate
 
