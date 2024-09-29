@@ -8,6 +8,8 @@
               SECTION .data
 
 str_goodbye   db 'Good bye!', 10
+str_you_died  db 'You died!', 0
+str_prs_enter db 'Press enter to continue', 0
 str_num_gems  db 'Gems remaining:', 0
 
 img_font_path db './data/font.bmp', 0
@@ -28,11 +30,17 @@ unit_vecs     dd 1, 0                       ; right
               dd 0, -1                      ; up
               dd 0, 1                       ; down
 
+next_obj_addr resq 0
+
 ; Top-left corner of the screen in world space
 camera_x      dd 0
 camera_y      dd 0
 
+%define       GAME_ST_ALIVE 0
+%define       GAME_ST_DEAD 1
+
 num_gems      dd 0
+game_state    dd GAME_ST_ALIVE
 
 %define       OBJ_TYPE_PLYR 0
 %define       OBJ_TYPE_SOIL 1
@@ -82,6 +90,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 
 %define       ANIM_NUM_FRAMES 8
 
+objects       resb OBJ_SIZE * GRID_W * GRID_H
 grid          resq GRID_W * GRID_H          ; Pointers to game objects
 pending_destr resq GRID_W * GRID_H
 player        resq 1
@@ -131,7 +140,6 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern drw_fb_w
               extern drw_fb_h
 
-              extern util_alloc
               extern util_min
               extern util_max
               extern util_int_to_str
@@ -236,6 +244,9 @@ construct_scene:
               mov r8, 0
               mov [num_gems], r8d
 
+              lea r8, [rel objects]
+              mov [next_obj_addr], r8
+
               xor r8, r8                    ; row
 .loop_row:
               xor r9, r9                    ; col
@@ -296,6 +307,8 @@ construct_scene:
               inc r8
               cmp r8, GRID_H
               jl .loop_row
+
+              mov [game_state], dword GAME_ST_ALIVE
 
               ret
 
@@ -527,6 +540,35 @@ grid_at:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+grid_at_world:
+; rdi worldX
+; rsi worldY
+;
+; Returns
+; rax object
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rax, rdi
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8
+              mov r9, rax                   ; gridX
+
+              mov rax, rsi
+              mov r8, CELL_SZ
+              xor rdx, rdx
+              div r8
+              mov r10, rax                  ; gridY
+
+              imul r10, GRID_W
+              add r10, r9
+              shl r10, 3
+              lea r8, [rel grid]
+              add r8, r10
+              mov rax, [r8]
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_erase:
 ; rdi object
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -713,8 +755,9 @@ construct_object:
               mov [rbp - 32], rcx           ; image
               mov [rbp - 48], r8            ; flags
 
-              mov rdi, OBJ_SIZE
-              call util_alloc
+              mov r11, OBJ_SIZE
+              mov rax, [next_obj_addr]
+              add [next_obj_addr], r11
 
               mov r11, rax                  ; pointer
 
@@ -746,6 +789,37 @@ construct_object:
               mov rsp, rbp
               pop rbp
 
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_is_falling:
+; rdi object
+;
+; Returns
+; rax whether the object is falling
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; To save having to add some kind of IS_FALLING flag, assume an object is falling if:
+              ;   - its animation state is 1
+              ;   - its dy is positive
+              ;   - OBJ_FLAG_ANIMATED is unset, so it's moving but not animating
+
+              mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 0
+              je .false
+
+              mov r8, [rdi + OBJ_OFFSET_DY]
+              cmp r8, 0
+              jle .false
+
+              mov r8, [rdi + OBJ_OFFSET_FLAGS]
+              and r8, OBJ_FLAG_ANIMATED
+              cmp r8, 0
+              jne .false
+
+              mov rax, 1
+              ret
+.false:
+              mov rax, 0
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -884,6 +958,60 @@ render_hud:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+render_death_box:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push r12
+              push r13
+
+              mov r8d, [drw_fb_w]
+              mov r9d, [drw_fb_h]
+
+              mov r10, r8
+              shr r10, 2                    ; x
+              mov r11, r8
+              shr r11, 1                    ; w
+
+              mov r12, r9
+              shr r12, 2                    ; y
+              mov r13, r9
+              shr r13, 1                    ; h
+
+              push r10
+
+              mov rdi, r10
+              mov rsi, r12
+              mov rdx, r11
+              mov rcx, r13
+              mov r8, HUD_COLOUR
+              call drw_fill
+
+              pop r10
+              push r10
+
+              lea rdi, [rel str_you_died]
+              lea rsi, [rel img_font]
+              mov rdx, r10
+              add rdx, 40
+              mov rcx, r12
+              add rcx, 40
+              call drw_draw_text
+
+              pop r10
+
+              lea rdi, [rel str_prs_enter]
+              lea rsi, [rel img_font]
+              mov rdx, r10
+              add rdx, 40
+              mov rcx, r12
+              add rcx, 150
+              call drw_draw_text
+
+              pop r13
+              pop r12
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 render_scene:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
@@ -978,6 +1106,15 @@ render_scene:
               jl .loop_row
 
               call render_hud
+
+              cmp [game_state], dword GAME_ST_DEAD
+              je .st_dead
+              cmp [game_state], dword GAME_ST_ALIVE
+              je .st_endif
+.st_dead:
+              call render_death_box
+.st_endif:
+
               call drw_flush
 
               mov rsp, rbp
@@ -1561,7 +1698,35 @@ physics:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+death_condition:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              lea r11, [rel grid]
+
+              mov r8, [player]
+              mov rdi, [r8 + OBJ_OFFSET_X]
+              mov rsi, [r8 + OBJ_OFFSET_Y]
+              sub rsi, CELL_SZ / 2
+              call grid_at_world
+              cmp rax, 0
+              je .still_alive
+
+              mov rdi, rax
+              call obj_is_falling
+              cmp rax, 0
+              je .still_alive
+
+              mov [game_state], dword GAME_ST_DEAD
+              ret
+.still_alive:
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 keyboard:
+; Returns
+; rax change of game state:
+;     0 no change
+;     1 quit
+;     2 restart level
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               sub rsp, 16
               mov rax, 0                    ; sys_read
@@ -1571,6 +1736,12 @@ keyboard:
               syscall
               cmp rax, -1
               je .no_input
+
+              cmp [game_state], dword GAME_ST_ALIVE
+              je .st_alive
+              cmp [game_state], dword GAME_ST_DEAD
+              je .st_dead
+.st_alive:
               cmp byte [rsp], 0x1B          ; esc sequence
               jne .no_input
               cmp byte [rsp + 1], 0x5B      ; [ character
@@ -1583,6 +1754,13 @@ keyboard:
               je .key_right
               cmp byte [rsp + 2], 0x44
               je .key_left
+.st_dead:
+              cmp byte [rsp], 0x0A          ; new line
+              je .restart
+              cmp byte [rsp], 0x1B          ; esc sequence
+              jne .no_input
+              cmp byte [rsp + 1], 0x5B      ; [ character
+              jne .quit
 .key_up:
               mov rdi, DIR_UP
               call plyr_move
@@ -1601,7 +1779,11 @@ keyboard:
               jmp .no_input
 .quit:
               add rsp, 16
-              mov rax, -1
+              mov rax, 1
+              ret
+.restart:
+              add rsp, 16
+              mov rax, 2
               ret
 .no_input:
               add rsp, 16
@@ -1653,29 +1835,63 @@ sleep:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+print:
+; rdi string
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, rdi
+
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
+              mov rsi, r8
+              mov rdx, 14
+              syscall
+
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 _start:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               call initialise
+
+.restart:
               call construct_scene
 
               ; Game loop
 .loop:
+              cmp [game_state], dword GAME_ST_ALIVE
+              je .st_alive
+              cmp [game_state], dword GAME_ST_DEAD
+              je .st_dead
+.st_alive:
+              call centre_cam
+              call render_scene
+              call sleep
+              call death_condition
+              call physics
+              call keyboard
+              cmp rax, 1
+              je .exit
+              cmp rax, 2
+              je .restart
+              call update_scene
+              call delete_pending
+              jmp .loop
+.st_dead:
               call centre_cam
               call render_scene
               call sleep
               call physics
               call keyboard
-              cmp rax, -1
+              cmp rax, 1
               je .exit
+              cmp rax, 2
+              je .restart
               call update_scene
               call delete_pending
               jmp .loop
 .exit:
-              mov rax, 1                    ; sys_write
-              mov rdi, 1                    ; stdout
-              lea rsi, [rel str_goodbye]
-              mov rdx, 14
-              syscall
+              lea rdi, [rel str_goodbye]
+              call print
 
               call terminate
 

@@ -122,9 +122,9 @@ drw_draw_text:
 ; rcx y
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               push rbp
-              mov rbp, rsp
               push r12
               push r13
+              mov rbp, rsp
               sub rsp, 32
 
               mov r13, rdi                  ; text
@@ -163,9 +163,9 @@ drw_draw_text:
               inc r11                       ; advance counter
               jmp .loop
 .end:
-              pop r12
-              pop r13
               mov rsp, rbp
+              pop r13
+              pop r12
               pop rbp
 
               ret
@@ -314,7 +314,9 @@ drw_fill:
               xor r14, r14                  ; column
 .loop_col:
               mov r15, r13
+              add r15, r10
               imul r15d, [drw_fb_w]
+              add r15, r9
               add r15, r14
               shl r15, 2                    ; dst offset
 
