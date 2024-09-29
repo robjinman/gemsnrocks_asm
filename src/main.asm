@@ -1816,12 +1816,12 @@ _start:
               call render_scene
               call sleep
               call death_condition
+              call physics
               call keyboard
               cmp rax, 1
               je .exit
               cmp rax, 2
               je .restart
-              call physics
               call update_scene
               call delete_pending
               jmp .loop
@@ -1829,12 +1829,12 @@ _start:
               call centre_cam
               call render_scene
               call sleep
+              call physics
               call keyboard
               cmp rax, 1
               je .exit
               cmp rax, 2
               je .restart
-              call physics
               call update_scene
               call delete_pending
               jmp .loop
