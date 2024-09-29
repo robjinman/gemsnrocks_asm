@@ -41,6 +41,8 @@ camera_y      dd 0
 
 num_gems      dd 0
 game_state    dd GAME_ST_ALIVE
+player_dir    dd -1
+pending_move  dd -1
 
 %define       OBJ_TYPE_PLYR 0
 %define       OBJ_TYPE_SOIL 1
@@ -1374,6 +1376,9 @@ obj_move:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 plyr_move:
 ; rdi direction
+;
+; Returns
+; rax 1 if player is already moving, 0 otherwise
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov r8, rdi
 
@@ -1381,20 +1386,25 @@ plyr_move:
               mov r9, [player]
               mov r10, [r9 + OBJ_OFFSET_ANIM_ST]
               cmp r10, 1
-              je .end                       ; exit function if object is moving
+              je .already_moving            ; exit function if already moving
 
               push r8
               call grid_push_obj
               pop r8
               cmp rax, 1
-              je .end                       ; exit function if blocked by object
+              je .blocked                   ; exit function if blocked by object
 
               mov rdi, [player]
               mov rsi, r8
               mov rdx, 1
               call obj_move
-.end:
-
+              jmp .success
+.already_moving:
+              mov rax, 1
+              ret
+.blocked:
+.success:
+              mov rax, 0
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1645,6 +1655,15 @@ keyboard:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               sub rsp, 32
 
+              cmp [pending_move], dword DIR_RIGHT
+              je .key_right
+              cmp [pending_move], dword DIR_LEFT
+              je .key_left
+              cmp [pending_move], dword DIR_UP
+              je .key_up
+              cmp [pending_move], dword DIR_DOWN
+              je .key_down
+
               xor r8, r8                    ; bytes read
 .loop:
               mov rax, 0                    ; sys_read
@@ -1661,7 +1680,7 @@ keyboard:
               jmp .loop
 .done:
               cmp r8, 0
-              je .no_input
+              je .end
 
               mov r9, rsp
               add r9, r8
@@ -1676,7 +1695,7 @@ keyboard:
               je .st_dead
 .st_alive:
               cmp byte [r9], 0x1B          ; esc sequence
-              jne .no_input
+              jne .end
               cmp byte [r9 + 1], 0x5B      ; [ character
               jne .quit
               cmp byte [r9 + 2], 0x41
@@ -1691,25 +1710,30 @@ keyboard:
               cmp byte [r9], 0x0A          ; new line
               je .restart
               cmp byte [r9], 0x1B          ; esc sequence
-              jne .no_input
+              jne .end
               cmp byte [r9 + 1], 0x5B      ; [ character
               jne .quit
 .key_up:
               mov rdi, DIR_UP
-              call plyr_move
-              jmp .no_input
+              jmp .arrow_key
 .key_down:
               mov rdi, DIR_DOWN
-              call plyr_move
-              jmp .no_input
+              jmp .arrow_key
 .key_right:
               mov rdi, DIR_RIGHT
-              call plyr_move
-              jmp .no_input
+              jmp .arrow_key
 .key_left:
               mov rdi, DIR_LEFT
+.arrow_key:
+              push rdi
               call plyr_move
-              jmp .no_input
+              pop rdi
+              cmp rax, 1                    ; if player was already moving
+              jne .plyr_moved_or_blocked
+              cmp [player_dir], edi
+              je .end
+              mov [pending_move], edi
+              jmp .end
 .quit:
               add rsp, 32
               mov rax, 1
@@ -1718,7 +1742,13 @@ keyboard:
               add rsp, 32
               mov rax, 2
               ret
-.no_input:
+.plyr_moved_or_blocked:
+              mov [pending_move], dword -1  ; clear pending movement
+              mov [player_dir], edi
+              add rsp, 32
+              mov rax, 0
+              ret
+.end:
               add rsp, 32
               mov rax, 0
               ret
@@ -1739,7 +1769,7 @@ delete_pending:
 
               mov r11, [rdi + OBJ_OFFSET_ANIM_ST]
               cmp r11, 1
-              je .skip                      ; Skip if animation is still playing
+              je .skip                      ; skip if animation is still playing
               ; Erase from pending_destr
               add r8, r9
               xor r11, r11
