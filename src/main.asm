@@ -1075,6 +1075,10 @@ push_gem:
 ; Returns
 ; rax block player = 1, allow player = 0
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 1
+              je .block_player
+
               push rdi
 
               mov rsi, 0                    ; animation ID
@@ -1088,7 +1092,11 @@ push_gem:
               dec dword [num_gems]
 
               mov rax, 0
+              jmp .end
 
+.block_player:
+              mov rax, 1                    ; block player movement
+.end:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1107,6 +1115,10 @@ push_rock:
               push r13
               push r14
               push r15
+
+              mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
+              cmp r8, 1
+              je .block_player
 
               mov [rbp - 8], rdi            ; object
               mov [rbp - 16], rsi           ; direction
