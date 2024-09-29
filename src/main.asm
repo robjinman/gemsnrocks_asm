@@ -25,6 +25,8 @@ img_exit_path db './data/exit.bmp', 0
 %define       DIR_UP 2
 %define       DIR_DOWN 3
 
+%define       PLYR_ANIM_DEATH 4
+
 unit_vecs     dd 1, 0                       ; right
               dd -1, 0                      ; left
               dd 0, -1                      ; up
@@ -74,7 +76,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 
               SECTION .bss
 
-%define       OBJ_SIZE 96
+%define       OBJ_SIZE 104
 %define       OBJ_OFFSET_TYPE 0
 %define       OBJ_OFFSET_X 8
 %define       OBJ_OFFSET_Y 16
@@ -87,6 +89,7 @@ levels        db 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
 %define       OBJ_OFFSET_FLAGS 72
 %define       OBJ_OFFSET_GRID_X 80
 %define       OBJ_OFFSET_GRID_Y 88
+%define       OBJ_OFFSET_QUEUED_ANIM 96
 
 %define       OBJ_FLAG_CAN_FALL 1
 %define       OBJ_FLAG_STACKABLE 2
@@ -315,6 +318,7 @@ construct_scene:
               jl .loop_row
 
               mov [game_state], dword GAME_ST_ALIVE
+              mov [pending_move], dword -1
 
               ret
 
@@ -625,6 +629,18 @@ obj_update:
               jne .end
               mov rcx, 0
               mov [rdi + OBJ_OFFSET_ANIM_ST], rcx
+
+              ; The animation has just finished
+              ; If there's another one queued, start it right away
+              mov rsi, [rdi + OBJ_OFFSET_QUEUED_ANIM]
+              cmp rsi, -1
+              je .end
+              mov rdx, 0
+              mov rcx, 0
+              call obj_play_anim
+              mov r8, -1
+              mov [rdi + OBJ_OFFSET_QUEUED_ANIM], r8
+
 .end:
               ret
 
@@ -708,6 +724,8 @@ construct_object:
               mov [r11 + OBJ_OFFSET_ANIM_ST], rdi
               mov rdi, [rbp - 48]           ; flags
               mov [r11 + OBJ_OFFSET_FLAGS], rdi
+              mov rdi, -1
+              mov [r11 + OBJ_OFFSET_QUEUED_ANIM], rdi
 
               mov rdi, [rbp - 16]           ; gridX
               mov rsi, [rbp - 24]           ; gridY
@@ -756,11 +774,14 @@ obj_play_anim:
 ; rsi animation ID (row of sprite sheet)
 ; rdx dx
 ; rcx dy
+;
+; Returns
+; rax 1 if playing the animation succeeded, 0 otherwise
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               ; Skip to end if there's already an animation playing
               mov r8, [rdi + OBJ_OFFSET_ANIM_ST]
               cmp r8, 1
-              je .end
+              je .failure
 
               ; Set animated flag
               mov r9, [rdi + OBJ_OFFSET_FLAGS]
@@ -772,6 +793,30 @@ obj_play_anim:
               mov [rdi + OBJ_OFFSET_IMG_ROW], rsi
               mov [rdi + OBJ_OFFSET_DX], rdx
               mov [rdi + OBJ_OFFSET_DY], rcx
+.success:
+              mov rax, 1
+              ret
+.failure:
+              mov rax, 0
+              ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+obj_queue_anim:
+; Queued animations don't have deltas
+; 
+; rdi object
+; rsi animation ID (row of sprite sheet)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              ; Try to play the animation first
+              mov rdx, 0
+              mov rcx, 0
+              call obj_play_anim
+
+              cmp rax, 1
+              je .end
+
+              ; Only queue the animation if it failed to play
+              mov [rdi + OBJ_OFFSET_QUEUED_ANIM], rsi
 .end:
               ret
 
@@ -1652,6 +1697,11 @@ death_condition:
               cmp rax, 0
               je .still_alive
 
+              mov rdi, [player]
+              mov rsi, PLYR_ANIM_DEATH
+              mov rdx, 0
+              mov rcx, 0
+              call obj_queue_anim
               mov [game_state], dword GAME_ST_DEAD
               ret
 .still_alive:
@@ -1667,6 +1717,8 @@ keyboard:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               sub rsp, 32
 
+              cmp [game_state], dword GAME_ST_ALIVE
+              jne .skip_pending_move
               cmp [pending_move], dword DIR_RIGHT
               je .key_right
               cmp [pending_move], dword DIR_LEFT
@@ -1675,6 +1727,7 @@ keyboard:
               je .key_up
               cmp [pending_move], dword DIR_DOWN
               je .key_down
+.skip_pending_move:
 
               xor r8, r8                    ; bytes read
 .loop:
