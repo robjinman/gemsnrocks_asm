@@ -559,9 +559,13 @@ obj_erase:
               ; Erase from grid
               lea r8, [rel grid]
               add r8, r9
+              mov r10, [r8]
+              ; But only if the object is actually in the grid
+              cmp rdi, r10
+              jne .skip
               xor r11, r11
               mov [r8], r11
-
+.skip:
               ; Add to pending_destr
               lea r8, [rel pending_destr]
               add r8, r9
@@ -1498,6 +1502,10 @@ plyr_move:
               mov rdi, [player]
               mov rsi, PLYR_ANIM_WIN
               call obj_queue_anim
+
+              mov rdi, [exit]
+              call obj_erase
+
               jmp .success
 .already_moving:
               mov rax, 1
