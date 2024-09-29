@@ -7,6 +7,7 @@
 
               SECTION .data
 
+%define       STR_GOODBYE_LEN 32
 str_goodbye   db "Thanks for playing Gems'n'Rocks", 10
 str_you_died  db 'You died!', 0
 str_success   db 'Success!', 0
@@ -1997,6 +1998,7 @@ _start:
               jmp .loop
 .exit:
               lea rdi, [rel str_goodbye]
+              mov rsi, STR_GOODBYE_LEN
               call util_print
 
               call terminate

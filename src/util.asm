@@ -1,5 +1,6 @@
               SECTION .data
 
+%define       STR_ERROR_LEN 18
 str_error     db 'Assertion failed!', 10
 
               SECTION .text
@@ -68,13 +69,15 @@ util_int_to_str:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 util_print:
 ; rdi string
+; rsi length
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov r8, rdi
+              mov r9, rsi
 
               mov rax, 1                    ; sys_write
               mov rdi, 1                    ; stdout
               mov rsi, r8
-              mov rdx, 14
+              mov rdx, r9                   ; length
               syscall
 
               ret
@@ -83,6 +86,7 @@ util_print:
 util_assert_fail:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               lea rdi, [rel str_error]
+              mov rsi, STR_ERROR_LEN
               call util_print
 
               ret
