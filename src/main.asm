@@ -1643,38 +1643,56 @@ keyboard:
 ;     1 quit
 ;     2 restart level
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-              sub rsp, 16
+              sub rsp, 32
+
+              xor r8, r8                    ; bytes read
+.loop:
               mov rax, 0                    ; sys_read
               mov rdi, 0                    ; stdin
               mov rsi, rsp
-              mov rdx, 3                    ; num bytes
+              add rsi, r8
+              mov rdx, 1                    ; num bytes to read
               syscall
-              cmp rax, -1
+              cmp rax, 0
+              jle .done
+              add r8, rax                   ; we got data
+              cmp r8, 32
+              je .done
+              jmp .loop
+.done:
+              cmp r8, 0
               je .no_input
+
+              mov r9, rsp
+              add r9, r8
+              mov rdi, r8
+              mov rsi, 3
+              call util_min
+              sub r9, rax                  ; pointer to (no more than) last 3 bytes
 
               cmp [game_state], dword GAME_ST_ALIVE
               je .st_alive
               cmp [game_state], dword GAME_ST_DEAD
               je .st_dead
 .st_alive:
-              cmp byte [rsp], 0x1B          ; esc sequence
+              cmp byte [r9], 0x1B          ; esc sequence
               jne .no_input
-              cmp byte [rsp + 1], 0x5B      ; [ character
+              cmp byte [r9 + 1], 0x5B      ; [ character
               jne .quit
-              cmp byte [rsp + 2], 0x41
+              cmp byte [r9 + 2], 0x41
               je .key_up
-              cmp byte [rsp + 2], 0x42
+              cmp byte [r9 + 2], 0x42
               je .key_down
-              cmp byte [rsp + 2], 0x43
+              cmp byte [r9 + 2], 0x43
               je .key_right
-              cmp byte [rsp + 2], 0x44
+              cmp byte [r9 + 2], 0x44
               je .key_left
 .st_dead:
-              cmp byte [rsp], 0x0A          ; new line
+              cmp byte [r9], 0x0A          ; new line
               je .restart
-              cmp byte [rsp], 0x1B          ; esc sequence
+              cmp byte [r9], 0x1B          ; esc sequence
               jne .no_input
-              cmp byte [rsp + 1], 0x5B      ; [ character
+              cmp byte [r9 + 1], 0x5B      ; [ character
               jne .quit
 .key_up:
               mov rdi, DIR_UP
@@ -1693,15 +1711,15 @@ keyboard:
               call plyr_move
               jmp .no_input
 .quit:
-              add rsp, 16
+              add rsp, 32
               mov rax, 1
               ret
 .restart:
-              add rsp, 16
+              add rsp, 32
               mov rax, 2
               ret
 .no_input:
-              add rsp, 16
+              add rsp, 32
               mov rax, 0
               ret
 
@@ -1768,12 +1786,12 @@ _start:
               call render_scene
               call sleep
               call death_condition
-              call physics
               call keyboard
               cmp rax, 1
               je .exit
               cmp rax, 2
               je .restart
+              call physics
               call update_scene
               call delete_pending
               jmp .loop
@@ -1781,12 +1799,12 @@ _start:
               call centre_cam
               call render_scene
               call sleep
-              call physics
               call keyboard
               cmp rax, 1
               je .exit
               cmp rax, 2
               je .restart
+              call physics
               call update_scene
               call delete_pending
               jmp .loop
