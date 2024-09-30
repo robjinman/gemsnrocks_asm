@@ -1973,6 +1973,16 @@ _start:
               cmp rax, 2
               je .restart
               call update_scene
+
+              ; Bit hacky, but force the death animation to stay on the last frame
+              mov r8, [player]
+              mov r9, [r8 + OBJ_OFFSET_ANIM_ST]
+              cmp r9, 0
+              jne .skip
+              mov r9, ANIM_NUM_FRAMES - 1
+              mov [r8 + OBJ_OFFSET_FRAME], r9
+.skip:
+
               call delete_pending
               jmp .loop
 .st_success:
