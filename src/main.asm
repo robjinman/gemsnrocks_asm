@@ -3,7 +3,7 @@
 %define       GRID_H 20
 %define       HUD_H 64
 %define       BACKGROUND_COLOUR 0xFF332211
-%define       HUD_COLOUR 0xFF222233
+%define       HUD_COLOUR 0xFF111111
 
               SECTION .data
 
@@ -56,8 +56,8 @@ game_state    dd GAME_ST_ALIVE
 player_dir    dd -1
 pending_move  dd -1
 
-%define       OBJ_TYPE_PLYR 0
-%define       OBJ_TYPE_SOIL 1
+%define       OBJ_TYPE_PLYR 1
+%define       OBJ_TYPE_SOIL 0
 %define       OBJ_TYPE_ROCK 2
 %define       OBJ_TYPE_GEM 3
 %define       OBJ_TYPE_WALL 4
@@ -130,6 +130,7 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern drw_init
               extern drw_draw
               extern drw_fill
+              extern drw_darken
               extern drw_draw_text
               extern drw_load_bmp
               extern drw_term
@@ -950,8 +951,7 @@ render_box:
               mov rsi, r12                  ; y
               mov rdx, r11                  ; w
               mov rcx, r13                  ; h
-              mov r8, HUD_COLOUR
-              call drw_fill
+              call drw_darken
 
               mov rdi, [rbp - 40]           ; string 1
               lea rsi, [rel img_font]

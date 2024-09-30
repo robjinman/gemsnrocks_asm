@@ -19,6 +19,7 @@ drw_buf       dq 0
               global drw_draw
               global drw_load_bmp
               global drw_fill
+              global drw_darken
               global drw_draw_text
               global drw_flush
 
@@ -303,6 +304,85 @@ drw_flush:
               ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drw_darken:
+; Darkens the rectangular region
+;
+; rdi dstX
+; rsi dstY
+; rdx w
+; rcx h
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
+              push r12
+              push r13
+              push r14
+              push r15
+              mov rbp, rsp
+              sub rsp, 64
+
+              mov [rbp - 8], rdi            ; dstX
+              mov [rbp - 16], rsi           ; dstY
+              mov [rbp - 24], rdx           ; w
+              mov [rbp - 32], rcx           ; h
+
+              xor r13, r13                  ; row
+.loop_row:
+              xor r14, r14                  ; column
+.loop_col:
+              mov r15, r13
+              add r15, [rbp - 16]           ; dstY
+              imul r15d, [drw_fb_w]
+              add r15, [rbp - 8]            ; dstX
+              add r15, r14
+              shl r15, 2                    ; dst offset
+
+              mov rdi, [drw_buf]
+              add rdi, r15
+
+              mov r8d, [rdi]
+              mov r11, 0xFF000000
+
+              ; red
+              mov r12, r8
+              and r12, 0x00FF0000
+              shr r12, 17
+              shl r12, 16
+              or r11, r12
+
+              ; green
+              mov r12, r8
+              and r12, 0x0000FF00
+              shr r12, 9
+              shl r12, 8
+              or r11, r12
+
+              ; blue
+              mov r12, r8
+              and r12, 0x000000FF
+              shr r12, 1
+              or r11, r12
+
+              mov [rdi], r11d
+
+              inc r14
+              cmp r14, [rbp - 24]
+              jl .loop_col
+
+              inc r13
+              cmp r13, [rbp - 32]
+              jl .loop_row
+
+              mov rsp, rbp
+              pop r15
+              pop r14
+              pop r13
+              pop r12
+              pop rbp
+
+              ret
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 drw_fill:
 ; Fills the rectangular region with a colour
 ;
@@ -312,24 +392,27 @@ drw_fill:
 ; rcx h
 ; r8  colour
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              push rbp
               push r12
               push r13
               push r14
               push r15
+              mov rbp, rsp
+              sub rsp, 64
 
-              mov r9, rdi                   ; dstX
-              mov r10, rsi                  ; dstY
-              mov r11, rdx                  ; w
-              mov r12, rcx                  ; h
+              mov [rbp - 8], rdi            ; dstX
+              mov [rbp - 16], rsi           ; dstY
+              mov [rbp - 24], rdx           ; w
+              mov [rbp - 32], rcx           ; h
 
               xor r13, r13                  ; row
 .loop_row:
               xor r14, r14                  ; column
 .loop_col:
               mov r15, r13
-              add r15, r10
+              add r15, [rbp - 16]           ; dstY
               imul r15d, [drw_fb_w]
-              add r15, r9
+              add r15, [rbp - 8]            ; dstX
               add r15, r14
               shl r15, 2                    ; dst offset
 
@@ -338,16 +421,19 @@ drw_fill:
               mov [rdi], r8d
 
               inc r14
-              cmp r14, r11
+              cmp r14, [rbp - 24]
               jl .loop_col
 
               inc r13
-              cmp r13, r12
+              cmp r13, [rbp - 32]
               jl .loop_row
 
+              mov rsp, rbp
               pop r15
               pop r14
               pop r13
               pop r12
+              pop rbp
 
               ret
+
