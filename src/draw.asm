@@ -85,14 +85,14 @@ drw_load_bmp:
 
               ; Open file
               mov rax, 2                    ; sys_open
-              mov rsi, 2                    ; O_RDWR
+              mov rsi, 0                    ; O_RDONLY
               mov rdx, 0                    ; flags
               syscall
               mov rdi, rax                  ; file descriptor
 
-              pop rcx
-              pop rdx
-              pop rsi
+              pop rcx                       ; h
+              pop rdx                       ; w
+              pop rsi                       ; buffer
 
               ; Store width and height at beginning of buffer
               mov [rsi], edx
@@ -101,16 +101,29 @@ drw_load_bmp:
               add rsi, 4
 
               ; Load data from file
-              mov rax, 17                   ; sys_pread64
-              imul rdx, rcx
-              shl rdx, 2                    ; num bytes
-              mov r10, 54                   ; offset
+              mov rdx, rdx                  ; w
+              imul rdx, rcx                 ; w * h
+              shl rdx, 2                    ; num bytes to read
 
-              push r11
-              push rcx
+              xor r11, r11                  ; bytes read so far
+.loop:
+              mov rax, 17                   ; sys_pread64
+              mov r10, 54                   ; offset
+              add r10, r11
+              push rdi                      ; file descriptor
+              push rsi                      ; buffer
+              push rdx                      ; bytes remaining
+              push r11                      ; bytes read so far
               syscall
-              pop rcx
-              pop r11
+              pop r11                       ; bytes read so far
+              pop rdx                       ; bytes remaining
+              pop rsi                       ; buffer
+              pop rdi                       ; file descriptor
+              add r11, rax                  ; bytes read so far
+              add rsi, rax                  ; advance pointer
+              sub rdx, rax                  ; bytes remaining
+              cmp rdx, 0
+              jg .loop
 
               ret
 
