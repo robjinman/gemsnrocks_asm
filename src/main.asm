@@ -102,7 +102,7 @@ stdin_flags   resq 1                        ; Original stdin flags
 img_font      resb 8 + IMG_FONT_W * IMG_FONT_H * 4
 
 %define       IMG_PLYR_W 512
-%define       IMG_PLYR_H 512
+%define       IMG_PLYR_H 384
 img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_H * 4
 
 %define       IMG_SOIL_W 512
@@ -925,15 +925,19 @@ render_box:
               mov r8d, [drw_fb_w]
               mov r9d, [drw_fb_h]
 
-              mov r10, r8
-              shr r10, 2                    ; x
-              mov r11, r8
-              shr r11, 1                    ; w
+              mov r10, r8                   ; fb_w
+              shr r10, 3                    ; x = fb_w / 8
+              mov r12, r10                  ; x
+              shl r12, 1                    ; 2 * x
+              mov r11, r8                   ; fb_w
+              sub r11, r12                  ; w = fb_w - 2 * x
 
-              mov r12, r9
-              shr r12, 2                    ; y
-              mov r13, r9
-              shr r13, 1                    ; h
+              mov r12, r9                   ; fb_h
+              shr r12, 2                    ; y = fb_h / 4
+              mov rcx, r12                  ; y
+              shl rcx, 1                    ; 2 * y
+              mov r13, r9                   ; fb_h
+              sub r13, rcx                  ; h = fb_h - 2 * y
 
               mov [rbp - 8], r10            ; x
               mov [rbp - 16], r12           ; y
@@ -1037,9 +1041,6 @@ render_scene:
 .no_inc_y:
               mov [rbp - 16], rax           ; yMax
 
-              lea r11, [rel grid]
-              lea r15, [rel pending_destr]
-
               mov eax, [camera_y]
               xor rdx, rdx
               div r14
@@ -1056,8 +1057,8 @@ render_scene:
               add r10, r9
               shl r10, 3                    ; offset
 
-              mov r12, r10
-              add r12, r11
+              lea r12, [rel grid]
+              add r12, r10
               mov rdi, [r12]
               cmp rdi, 0
               je .skip1
@@ -1065,23 +1066,20 @@ render_scene:
               push r8
               push r9
               push r10
-              push r11
               call obj_draw
-              pop r11
               pop r10
               pop r9
               pop r8
 .skip1:
-              add r10, r15
-              mov rdi, [r10]
+              lea r11, [rel pending_destr]
+              add r11, r10
+              mov rdi, [r11]
               cmp rdi, 0
               je .skip2
 
               push r8
               push r9
-              push r11
               call obj_draw
-              pop r11
               pop r9
               pop r8
 .skip2:
@@ -1505,8 +1503,14 @@ plyr_move:
               mov rsi, PLYR_ANIM_WIN
               call obj_queue_anim
 
-              mov rdi, [exit]
+              mov rdi, [player]
               call obj_erase
+
+              mov r8, [player]
+              mov rdi, [r8 + OBJ_OFFSET_GRID_X]
+              mov rsi, [r8 + OBJ_OFFSET_GRID_Y]
+              mov rdx, [exit]
+              call grid_insert
 
               jmp .success
 .already_moving:
