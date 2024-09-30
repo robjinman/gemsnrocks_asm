@@ -1,7 +1,7 @@
               SECTION .data
 
-%define       FONT_CHAR_W 40
-%define       FONT_CHAR_H 64
+%define       FONT_CHAR_W 30
+%define       FONT_CHAR_H 48
 %define       SPACE_CHAR_CODE_PT 32
 
 drw_fb_path   db '/dev/fb0', 0

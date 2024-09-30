@@ -7,8 +7,8 @@
 
               SECTION .data
 
-%define       STR_GOODBYE_LEN 32
-str_goodbye   db "Thanks for playing Gems'n'Rocks", 10
+%define       STR_GOODBYE_LEN 33
+str_goodbye   db "Thanks for playing Gems'n'Rocks!", 10
 str_you_died  db 'You died!', 0
 str_success   db 'Success!', 0
 str_victory   db 'You are victorious!', 0
@@ -32,6 +32,7 @@ img_exit_path db './data/exit.bmp', 0
 %define       PLYR_ANIM_DEATH 4
 %define       PLYR_ANIM_WIN 5
 %define       EXIT_ANIM_OPEN 1
+%define       GEM_ANIM_COLLECT 2
 
 unit_vecs     dd 1, 0                       ; right
               dd -1, 0                      ; left
@@ -96,8 +97,8 @@ termios_new   resb 60                       ; Modified terminal settings
 stdin_flags   resq 1                        ; Original stdin flags
 
 ; First 8 bytes contains width and height
-%define       IMG_FONT_W 3640
-%define       IMG_FONT_H 64
+%define       IMG_FONT_W 2730
+%define       IMG_FONT_H 48
 img_font      resb 8 + IMG_FONT_W * IMG_FONT_H * 4
 
 %define       IMG_PLYR_W 512
@@ -109,14 +110,14 @@ img_plyr      resb 8 + IMG_PLYR_W * IMG_PLYR_H * 4
 img_soil      resb 8 + IMG_SOIL_W * IMG_SOIL_H * 4
 
 %define       IMG_ROCK_W 512
-%define       IMG_ROCK_H 256
+%define       IMG_ROCK_H 128
 img_rock      resb 8 + IMG_ROCK_W * IMG_ROCK_H * 4
 
 %define       IMG_GEM_W 512
-%define       IMG_GEM_H 256
+%define       IMG_GEM_H 192
 img_gem       resb 8 + IMG_GEM_W * IMG_GEM_H * 4
 
-%define       IMG_WALL_W 512
+%define       IMG_WALL_W 64
 %define       IMG_WALL_H 64
 img_wall      resb 8 + IMG_WALL_W * IMG_WALL_H * 4
 
@@ -894,7 +895,7 @@ render_hud:
               lea rdi, [rel str_num_gems]
               lea rsi, [rel img_font]
               mov rdx, 10
-              mov rcx, 0
+              mov rcx, 10
               call drw_draw_text
 
               sub rsp, 16
@@ -903,8 +904,8 @@ render_hud:
               call util_int_to_str
               mov rdi, rsp
               lea rsi, [rel img_font]
-              mov rdx, 640
-              mov rcx, 0
+              mov rdx, 500
+              mov rcx, 10
               call drw_draw_text
               add rsp, 16
 
@@ -1163,7 +1164,7 @@ push_gem:
 
               push rdi
 
-              mov rsi, 0                    ; animation ID
+              mov rsi, GEM_ANIM_COLLECT     ; animation ID
               mov rdx, 0                    ; dx
               mov rcx, 0                    ; dy
               call obj_play_anim
@@ -1997,6 +1998,16 @@ _start:
               call delete_pending
               jmp .loop
 .exit:
+
+              ; Clear the screen
+              mov rdi, 0
+              mov rsi, 0
+              mov edx, [drw_fb_w]
+              mov ecx, [drw_fb_h]
+              mov r8, 0
+              call drw_fill
+              call drw_flush
+
               lea rdi, [rel str_goodbye]
               mov rsi, STR_GOODBYE_LEN
               call util_print
