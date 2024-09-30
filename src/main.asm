@@ -7,6 +7,9 @@
 
               SECTION .data
 
+hide_cursor   db 0x1b, '[?25l', 0
+show_cursor   db 0x1b, '[?25h', 0
+
 %define       STR_GOODBYE_LEN 33
 str_goodbye   db "Thanks for playing Gems'n'Rocks!", 10
 str_you_died  db 'You died!', 0
@@ -462,6 +465,12 @@ initialise:
               mov rdx, termios_new
               syscall
 
+              mov rax, 1                  ; sys_write
+              mov rdi, 1                  ; stdout
+              mov rsi, hide_cursor
+              mov rdx, 6
+              syscall
+
               call drw_init
 
               ret
@@ -482,6 +491,12 @@ terminate:
               mov rsi, 4                    ; F_SETFL (set file status flags)
               mov rdx, [stdin_flags]        ; Copy old flags to rdx
               mov rax, 72                   ; sys_fcntl
+              syscall
+
+              mov rax, 1                  ; sys_write
+              mov rdi, 1                  ; stdout
+              mov rsi, show_cursor
+              mov rdx, 6
               syscall
 
               ret
