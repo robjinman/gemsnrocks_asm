@@ -1835,6 +1835,8 @@ keyboard:
               cmp [game_state], dword GAME_ST_VICTORIOUS
               je .st_victorious
 .st_alive:
+              cmp byte [r9], 0x0A          ; new line
+              je .restart
               cmp byte [r9], 0x1B          ; esc sequence
               jne .end
               cmp byte [r9 + 1], 0x5B      ; [ character
