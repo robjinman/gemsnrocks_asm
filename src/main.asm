@@ -1299,7 +1299,7 @@ push_wall:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 obj_push:
-; Push the object from the given direction
+; Push the object in the given direction
 ;
 ; rdi object
 ; rsi direction
@@ -1339,7 +1339,7 @@ obj_push:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 grid_push_obj:
-; Push the object from the given direction
+; Push the object in the given direction
 ;
 ; rdi direction
 ;
