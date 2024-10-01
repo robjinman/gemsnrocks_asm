@@ -6,10 +6,10 @@ Build
 
 ### Prerequisites
 
-Download and build nasm from source and place on your PATH. I use nasm version 2.16.03. There is
-a bug in 2.15 that makes debugging difficult.
+You need to have git-lfs installed to get the game's data files. If you installed git-lfs after cloning the repo, make sure to do a `git lfs pull`. The game will crash if the data files aren't present.
 
-Remember to `git lfs pull` when checking out the repo.
+Download and build nasm from source and place on your PATH or install globally. I use nasm version 2.16.03. There is
+a bug in 2.15 that makes debugging difficult.
 
 ### Compile
 
@@ -28,10 +28,10 @@ The app needs permission to write to /dev/fb0. Add your user to the video group.
 
 Before running the app, switch to TTY mode with ctrl + alt + f1. You can switch between TTYs with alt + arrow keys.
 
-Log in, navigate to the project directory, and run the application
+Run the application from the project directory.
 
 ```
     ./build/gems
 ```
 
-The app is tested on a screen resolution of 1920x1080. It may not work so well on other resolutions.
+The app works best on a screen resolution of 1920x1080.
