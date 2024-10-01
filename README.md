@@ -1,6 +1,8 @@
 Gems'n'Rocks
 ============
 
+A BoulderDash-like game written in x86_64 assembly without any libraries (not even the C standard lib), just using the linux system call interface. Drawing to the screen is done by writing directly to /dev/fb0.
+
 Build
 -----
 
