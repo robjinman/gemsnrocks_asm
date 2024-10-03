@@ -5,6 +5,7 @@
 %define       SPACE_CHAR_CODE_PT 32
 
 drw_fb_path   db '/dev/fb0', 0
+drw_ss_path   db 'screenshot', 0
 drw_fbfd      dd 0
 drw_fb_w      dd 0
 drw_fb_h      dd 0
@@ -22,6 +23,7 @@ drw_buf       dq 0
               global drw_darken
               global drw_draw_text
               global drw_flush
+              global drw_screenshot
 
               extern util_alloc
 
@@ -87,7 +89,7 @@ drw_load_bmp:
               ; Open file
               mov rax, 2                    ; sys_open
               mov rsi, 0                    ; O_RDONLY
-              mov rdx, 0                    ; flags
+              mov rdx, 0                    ; mode
               syscall
               mov rdi, rax                  ; file descriptor
 
@@ -437,3 +439,30 @@ drw_fill:
 
               ret
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drw_screenshot:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+              mov rax, 2                    ; sys_open
+              lea rdi, [rel drw_ss_path]
+              mov rsi, 0101o                ; O_WRONLY | O_CREAT
+              mov rdx, 0664o                ; mode
+              syscall
+
+              mov r8, rax                   ; file descriptor
+              push r8
+
+              mov rax, 1                    ; sys_write
+              mov rdi, r8                   ; file descriptor
+              mov rsi, [drw_buf]
+              mov edx, [drw_fb_w]
+              imul edx, [drw_fb_h]
+              shl rdx, 2                    ; num bytes
+              syscall
+
+              pop r8                        ; file descriptor
+
+              mov rax, 3                    ; sys_close
+              mov rdi, r8                   ; file descriptor
+              syscall
+
+              ret

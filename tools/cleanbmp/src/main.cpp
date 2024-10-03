@@ -1,6 +1,7 @@
 #include "cpputils/bitmap.hpp"
 #include <iostream>
 #include <vector>
+#include <fstream>
 
 using namespace cpputils;
 
@@ -19,15 +20,14 @@ void invert(Bitmap& bitmap) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::cout << "Usage: " << argv[0] << " input_bmp output_bmp" << std::endl;
-    return 1;
-  }
+  std::ifstream stream("./screenshot", std::ios::binary);
 
-  Bitmap bitmap = loadBitmap(argv[1]);
-  invert(bitmap);
+  size_t size[] = { 1080, 1920, 4 };
+  Bitmap screenshot(size);
+  stream.read(reinterpret_cast<char*>(screenshot.data), 1920 * 1080 * 4);
 
-  saveBitmap(bitmap, argv[2]);
+  invert(screenshot);
+  saveBitmap(screenshot, "./screenshot.bmp");
 
   return 0;
 }

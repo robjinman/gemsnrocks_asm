@@ -140,6 +140,7 @@ img_exit      resb 8 + IMG_EXIT_W * IMG_EXIT_H * 4
               extern drw_flush
               extern drw_fb_w
               extern drw_fb_h
+              extern drw_screenshot
 
               extern util_min
               extern util_max
@@ -465,8 +466,8 @@ initialise:
               mov rdx, termios_new
               syscall
 
-              mov rax, 1                  ; sys_write
-              mov rdi, 1                  ; stdout
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
               mov rsi, hide_cursor
               mov rdx, 6
               syscall
@@ -493,8 +494,8 @@ terminate:
               mov rax, 72                   ; sys_fcntl
               syscall
 
-              mov rax, 1                  ; sys_write
-              mov rdi, 1                  ; stdout
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
               mov rsi, show_cursor
               mov rdx, 6
               syscall
@@ -1835,6 +1836,8 @@ keyboard:
               cmp [game_state], dword GAME_ST_VICTORIOUS
               je .st_victorious
 .st_alive:
+              cmp byte [r9], 's'
+              je .screenshot
               cmp byte [r9], 0x0A          ; new line
               je .restart
               cmp byte [r9], 0x1B          ; esc sequence
@@ -1889,6 +1892,9 @@ keyboard:
               add rsp, 32
               mov rax, 2
               ret
+.screenshot:
+              call drw_screenshot
+              jmp .end
 .plyr_moved_or_blocked:
               mov [pending_move], dword -1  ; clear pending movement
               mov [player_dir], edi
