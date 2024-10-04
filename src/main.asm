@@ -465,8 +465,8 @@ initialise:
               mov rdx, termios_new
               syscall
 
-              mov rax, 1                  ; sys_write
-              mov rdi, 1                  ; stdout
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
               mov rsi, hide_cursor
               mov rdx, 6
               syscall
@@ -493,8 +493,8 @@ terminate:
               mov rax, 72                   ; sys_fcntl
               syscall
 
-              mov rax, 1                  ; sys_write
-              mov rdi, 1                  ; stdout
+              mov rax, 1                    ; sys_write
+              mov rdi, 1                    ; stdout
               mov rsi, show_cursor
               mov rdx, 6
               syscall
@@ -1033,8 +1033,10 @@ render_scene:
 
               mov r14, CELL_SZ
 
-              mov eax, [drw_fb_w]
-              add eax, [camera_x]
+              mov edi, [drw_fb_w]
+              add edi, [camera_x]
+              mov rsi, GRID_W * CELL_SZ
+              call util_min
               xor rdx, rdx
               div r14
               ; Increment xMax if there's a remainder
@@ -1044,9 +1046,11 @@ render_scene:
 .no_inc_x:
               mov [rbp - 8], rax            ; xMax
 
-              mov eax, [drw_fb_h]
-              sub rax, HUD_H
-              add eax, [camera_y]
+              mov edi, [drw_fb_h]
+              sub rdi, HUD_H
+              add edi, [camera_y]
+              mov rsi, GRID_H * CELL_SZ
+              call util_min
               xor rdx, rdx
               div r14
               ; Increment yMax if there's a remainder
