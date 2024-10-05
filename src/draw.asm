@@ -9,6 +9,11 @@ drw_fbfd      dd 0
 drw_fb_w      dd 0
 drw_fb_h      dd 0
 drw_buf       dq 0
+drw_fb_stride dd 0
+
+              SECTION .bss
+
+drw_vsinfo    resb 160
 
               SECTION .text
 
@@ -37,29 +42,40 @@ drw_init:
               syscall
               mov [drw_fbfd], eax
 
-              sub rsp, 160
-
               ; Get screen resolution
               mov rax, 16                   ; sys_ioctl
-              mov rdi, [drw_fbfd]
+              mov edi, [drw_fbfd]
               mov rsi, 0x4600               ; FBIOGET_VSCREENINFO
-              mov rdx, rsp
+              lea rdx, [rel drw_vsinfo]
               syscall
 
-              mov r11d, [rsp]
+              lea rdx, [rel drw_vsinfo]
+              mov r11d, [rdx]
               mov [drw_fb_w], r11d          ; width
-              mov r11d, [rsp + 4]
+              mov r11d, [rdx + 4]
               mov [drw_fb_h], r11d          ; height
 
+              sub rsp, 80
+
+              ; Get frame buffer line length
+              mov rax, 16                   ; sys_ioctl
+              mov edi, [drw_fbfd]
+              mov rsi, 0x4602               ; FBIOGET_FSCREENINFO
+              mov rdx, rsp
+              syscall
+              mov r11, [rsp + 48]           ; line length (bytes)
+              shr r11, 2                    ; line length (pixels)
+              mov [drw_fb_stride], r11d
+
+              add rsp, 80
+
               ; Allocate space for screen buffer
-              mov edi, [drw_fb_w]
+              mov edi, [drw_fb_stride]
               mov r11d, [drw_fb_h]
               imul rdi, r11
               shl rdi, 2
               call util_alloc
               mov [drw_buf], rax
-
-              add rsp, 160
 
               ret
 
@@ -224,7 +240,7 @@ drw_draw:
               xor r13, r13                  ; row
 .loop_row:
               ; src offset = 4 * (srcW * (row + srcY) + srcX + col)
-              ; dst offset = 4 * (drw_fb_w * (row + dstY) + dstx + col)
+              ; dst offset = 4 * (drw_fb_stride * (row + dstY) + dstx + col)
 
               mov r8, r13
               add r8, [rbp - 40]            ; row + srcY
@@ -237,8 +253,8 @@ drw_draw:
               jl .skip_row
               cmp r9d, [drw_fb_h]
               jge .skip_row
-              imul r9d, [drw_fb_w]          ; drw_fb_w * (row + dstY)
-              add r9, [rbp - 16]            ; drw_fb_w * (row + dstY) + dstX
+              imul r9d, [drw_fb_stride]     ; drw_fb_stride * (row + dstY)
+              add r9, [rbp - 16]            ; drw_fb_stride * (row + dstY) + dstX
 
               xor r14, r14                  ; col
 .loop_col:
@@ -246,7 +262,7 @@ drw_draw:
               add r15, [rbp - 16]
               cmp r15, 0
               jl .skip_col
-              cmp r15d, [drw_fb_w]
+              cmp r15d, [drw_fb_stride]
               jge .skip_col
 
               mov r10, r8
@@ -254,7 +270,7 @@ drw_draw:
               shl r10, 2                    ; src offset
 
               mov r11, r9
-              add r11, r14                  ; drw_fb_w * (row + dstY) + dstX + col
+              add r11, r14                  ; drw_fb_stride * (row + dstY) + dstX + col
               shl r11, 2                    ; dst offset
 
               mov rdi, [rbp - 8]            ; src
@@ -293,12 +309,22 @@ drw_draw:
 drw_flush:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
               mov rax, 18                   ; sys_pwrite64
-              mov rdi, [drw_fbfd]
+              mov edi, [drw_fbfd]
               mov rsi, [drw_buf]
-              mov edx, [drw_fb_w]
+              mov edx, [drw_fb_stride]
               imul edx, [drw_fb_h]
               shl rdx, 2                    ; num bytes
               mov r10, 0                    ; destination offset
+              syscall
+
+              ; Needed on some machines
+              mov rax, 16                   ; sys_ioctl
+              mov edi, [drw_fbfd]
+              mov esi, 0x4606               ; FBIOPAN_DISPLAY
+              lea rdx, [rel drw_vsinfo]
+              xor rcx, rcx
+              mov [rdx + 16], ecx           ; x offset
+              mov [rdx + 20], ecx           ; y offset
               syscall
 
               ret
@@ -331,7 +357,7 @@ drw_darken:
 .loop_col:
               mov r15, r13
               add r15, [rbp - 16]           ; dstY
-              imul r15d, [drw_fb_w]
+              imul r15d, [drw_fb_stride]
               add r15, [rbp - 8]            ; dstX
               add r15, r14
               shl r15, 2                    ; dst offset
@@ -411,7 +437,7 @@ drw_fill:
 .loop_col:
               mov r15, r13
               add r15, [rbp - 16]           ; dstY
-              imul r15d, [drw_fb_w]
+              imul r15d, [drw_fb_stride]
               add r15, [rbp - 8]            ; dstX
               add r15, r14
               shl r15, 2                    ; dst offset
